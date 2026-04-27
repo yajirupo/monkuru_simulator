@@ -1,0 +1,513 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/ReplayMenu.gd" id="1"]
+
+[node name="ReplayMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "REPLAY"
+
+[node name="LabelNum00" type="Label" parent="."]
+position = Vector2(10, 30)
+size = Vector2(62, 20)
+text = "     0"
+
+[node name="LabelNum01" type="Label" parent="."]
+position = Vector2(72, 30)
+size = Vector2(62, 20)
+text = "     1"
+
+[node name="LabelNum02" type="Label" parent="."]
+position = Vector2(134, 30)
+size = Vector2(62, 20)
+text = "     2"
+
+[node name="LabelNum03" type="Label" parent="."]
+position = Vector2(196, 30)
+size = Vector2(62, 20)
+text = "     3"
+
+[node name="LabelNum04" type="Label" parent="."]
+position = Vector2(258, 30)
+size = Vector2(62, 20)
+text = "     4"
+
+[node name="LabelNum05" type="Label" parent="."]
+position = Vector2(320, 30)
+size = Vector2(62, 20)
+text = "     5"
+
+[node name="LabelNum06" type="Label" parent="."]
+position = Vector2(382, 30)
+size = Vector2(62, 20)
+text = "     6"
+
+[node name="LabelNum07" type="Label" parent="."]
+position = Vector2(444, 30)
+size = Vector2(62, 20)
+text = "     7"
+
+[node name="LabelNum08" type="Label" parent="."]
+position = Vector2(506, 30)
+size = Vector2(62, 20)
+text = "     8"
+
+[node name="LabelNum09" type="Label" parent="."]
+position = Vector2(568, 30)
+size = Vector2(62, 20)
+text = "     9"
+
+[node name="LabelNum10" type="Label" parent="."]
+position = Vector2(10, 50)
+size = Vector2(62, 20)
+text = "    10"
+
+[node name="LabelNum11" type="Label" parent="."]
+position = Vector2(72, 50)
+size = Vector2(62, 20)
+text = "    11"
+
+[node name="LabelNum12" type="Label" parent="."]
+position = Vector2(134, 50)
+size = Vector2(62, 20)
+text = "    12"
+
+[node name="LabelNum13" type="Label" parent="."]
+position = Vector2(196, 50)
+size = Vector2(62, 20)
+text = "    13"
+
+[node name="LabelNum14" type="Label" parent="."]
+position = Vector2(258, 50)
+size = Vector2(62, 20)
+text = "    14"
+
+[node name="LabelNum15" type="Label" parent="."]
+position = Vector2(320, 50)
+size = Vector2(62, 20)
+text = "    15"
+
+[node name="LabelNum16" type="Label" parent="."]
+position = Vector2(382, 50)
+size = Vector2(62, 20)
+text = "    16"
+
+[node name="LabelNum17" type="Label" parent="."]
+position = Vector2(444, 50)
+size = Vector2(62, 20)
+text = "    17"
+
+[node name="LabelNum18" type="Label" parent="."]
+position = Vector2(506, 50)
+size = Vector2(62, 20)
+text = "    18"
+
+[node name="LabelNum19" type="Label" parent="."]
+position = Vector2(568, 50)
+size = Vector2(62, 20)
+text = "    19"
+
+[node name="LabelNum20" type="Label" parent="."]
+position = Vector2(10, 70)
+size = Vector2(62, 20)
+text = "    20"
+
+[node name="LabelNum21" type="Label" parent="."]
+position = Vector2(72, 70)
+size = Vector2(62, 20)
+text = "    21"
+
+[node name="LabelNum22" type="Label" parent="."]
+position = Vector2(134, 70)
+size = Vector2(62, 20)
+text = "    22"
+
+[node name="LabelNum23" type="Label" parent="."]
+position = Vector2(196, 70)
+size = Vector2(62, 20)
+text = "    23"
+
+[node name="LabelNum24" type="Label" parent="."]
+position = Vector2(258, 70)
+size = Vector2(62, 20)
+text = "    24"
+
+[node name="LabelNum25" type="Label" parent="."]
+position = Vector2(320, 70)
+size = Vector2(62, 20)
+text = "    25"
+
+[node name="LabelNum26" type="Label" parent="."]
+position = Vector2(382, 70)
+size = Vector2(62, 20)
+text = "    26"
+
+[node name="LabelNum27" type="Label" parent="."]
+position = Vector2(444, 70)
+size = Vector2(62, 20)
+text = "    27"
+
+[node name="LabelNum28" type="Label" parent="."]
+position = Vector2(506, 70)
+size = Vector2(62, 20)
+text = "    28"
+
+[node name="LabelNum29" type="Label" parent="."]
+position = Vector2(568, 70)
+size = Vector2(62, 20)
+text = "    29"
+
+[node name="LabelNum30" type="Label" parent="."]
+position = Vector2(10, 90)
+size = Vector2(62, 20)
+text = "    30"
+
+[node name="LabelNum31" type="Label" parent="."]
+position = Vector2(72, 90)
+size = Vector2(62, 20)
+text = "    31"
+
+[node name="LabelNum32" type="Label" parent="."]
+position = Vector2(134, 90)
+size = Vector2(62, 20)
+text = "    32"
+
+[node name="LabelNum33" type="Label" parent="."]
+position = Vector2(196, 90)
+size = Vector2(62, 20)
+text = "    33"
+
+[node name="LabelNum34" type="Label" parent="."]
+position = Vector2(258, 90)
+size = Vector2(62, 20)
+text = "    34"
+
+[node name="LabelNum35" type="Label" parent="."]
+position = Vector2(320, 90)
+size = Vector2(62, 20)
+text = "    35"
+
+[node name="LabelNum36" type="Label" parent="."]
+position = Vector2(382, 90)
+size = Vector2(62, 20)
+text = "    36"
+
+[node name="LabelNum37" type="Label" parent="."]
+position = Vector2(444, 90)
+size = Vector2(62, 20)
+text = "    37"
+
+[node name="LabelNum38" type="Label" parent="."]
+position = Vector2(506, 90)
+size = Vector2(62, 20)
+text = "    38"
+
+[node name="LabelNum39" type="Label" parent="."]
+position = Vector2(568, 90)
+size = Vector2(62, 20)
+text = "    39"
+
+[node name="LabelNum40" type="Label" parent="."]
+position = Vector2(10, 110)
+size = Vector2(62, 20)
+text = "    40"
+
+[node name="LabelNum41" type="Label" parent="."]
+position = Vector2(72, 110)
+size = Vector2(62, 20)
+text = "    41"
+
+[node name="LabelNum42" type="Label" parent="."]
+position = Vector2(134, 110)
+size = Vector2(62, 20)
+text = "    42"
+
+[node name="LabelNum43" type="Label" parent="."]
+position = Vector2(196, 110)
+size = Vector2(62, 20)
+text = "    43"
+
+[node name="LabelNum44" type="Label" parent="."]
+position = Vector2(258, 110)
+size = Vector2(62, 20)
+text = "    44"
+
+[node name="LabelNum45" type="Label" parent="."]
+position = Vector2(320, 110)
+size = Vector2(62, 20)
+text = "    45"
+
+[node name="LabelNum46" type="Label" parent="."]
+position = Vector2(382, 110)
+size = Vector2(62, 20)
+text = "    46"
+
+[node name="LabelNum47" type="Label" parent="."]
+position = Vector2(444, 110)
+size = Vector2(62, 20)
+text = "    47"
+
+[node name="LabelNum48" type="Label" parent="."]
+position = Vector2(506, 110)
+size = Vector2(62, 20)
+text = "    48"
+
+[node name="LabelNum49" type="Label" parent="."]
+position = Vector2(568, 110)
+size = Vector2(62, 20)
+text = "    49"
+
+[node name="LabelNum50" type="Label" parent="."]
+position = Vector2(10, 130)
+size = Vector2(62, 20)
+text = "    50"
+
+[node name="LabelNum51" type="Label" parent="."]
+position = Vector2(72, 130)
+size = Vector2(62, 20)
+text = "    51"
+
+[node name="LabelNum52" type="Label" parent="."]
+position = Vector2(134, 130)
+size = Vector2(62, 20)
+text = "    52"
+
+[node name="LabelNum53" type="Label" parent="."]
+position = Vector2(196, 130)
+size = Vector2(62, 20)
+text = "    53"
+
+[node name="LabelNum54" type="Label" parent="."]
+position = Vector2(258, 130)
+size = Vector2(62, 20)
+text = "    54"
+
+[node name="LabelNum55" type="Label" parent="."]
+position = Vector2(320, 130)
+size = Vector2(62, 20)
+text = "    55"
+
+[node name="LabelNum56" type="Label" parent="."]
+position = Vector2(382, 130)
+size = Vector2(62, 20)
+text = "    56"
+
+[node name="LabelNum57" type="Label" parent="."]
+position = Vector2(444, 130)
+size = Vector2(62, 20)
+text = "    57"
+
+[node name="LabelNum58" type="Label" parent="."]
+position = Vector2(506, 130)
+size = Vector2(62, 20)
+text = "    58"
+
+[node name="LabelNum59" type="Label" parent="."]
+position = Vector2(568, 130)
+size = Vector2(62, 20)
+text = "    59"
+
+[node name="LabelNum60" type="Label" parent="."]
+position = Vector2(10, 150)
+size = Vector2(62, 20)
+text = "    60"
+
+[node name="LabelNum61" type="Label" parent="."]
+position = Vector2(72, 150)
+size = Vector2(62, 20)
+text = "    61"
+
+[node name="LabelNum62" type="Label" parent="."]
+position = Vector2(134, 150)
+size = Vector2(62, 20)
+text = "    62"
+
+[node name="LabelNum63" type="Label" parent="."]
+position = Vector2(196, 150)
+size = Vector2(62, 20)
+text = "    63"
+
+[node name="LabelNum64" type="Label" parent="."]
+position = Vector2(258, 150)
+size = Vector2(62, 20)
+text = "    64"
+
+[node name="LabelNum65" type="Label" parent="."]
+position = Vector2(320, 150)
+size = Vector2(62, 20)
+text = "    65"
+
+[node name="LabelNum66" type="Label" parent="."]
+position = Vector2(382, 150)
+size = Vector2(62, 20)
+text = "    66"
+
+[node name="LabelNum67" type="Label" parent="."]
+position = Vector2(444, 150)
+size = Vector2(62, 20)
+text = "    67"
+
+[node name="LabelNum68" type="Label" parent="."]
+position = Vector2(506, 150)
+size = Vector2(62, 20)
+text = "    68"
+
+[node name="LabelNum69" type="Label" parent="."]
+position = Vector2(568, 150)
+size = Vector2(62, 20)
+text = "    69"
+
+[node name="LabelNum70" type="Label" parent="."]
+position = Vector2(10, 170)
+size = Vector2(62, 20)
+text = "    70"
+
+[node name="LabelNum71" type="Label" parent="."]
+position = Vector2(72, 170)
+size = Vector2(62, 20)
+text = "    71"
+
+[node name="LabelNum72" type="Label" parent="."]
+position = Vector2(134, 170)
+size = Vector2(62, 20)
+text = "    72"
+
+[node name="LabelNum73" type="Label" parent="."]
+position = Vector2(196, 170)
+size = Vector2(62, 20)
+text = "    73"
+
+[node name="LabelNum74" type="Label" parent="."]
+position = Vector2(258, 170)
+size = Vector2(62, 20)
+text = "    74"
+
+[node name="LabelNum75" type="Label" parent="."]
+position = Vector2(320, 170)
+size = Vector2(62, 20)
+text = "    75"
+
+[node name="LabelNum76" type="Label" parent="."]
+position = Vector2(382, 170)
+size = Vector2(62, 20)
+text = "    76"
+
+[node name="LabelNum77" type="Label" parent="."]
+position = Vector2(444, 170)
+size = Vector2(62, 20)
+text = "    77"
+
+[node name="LabelNum78" type="Label" parent="."]
+position = Vector2(506, 170)
+size = Vector2(62, 20)
+text = "    78"
+
+[node name="LabelNum79" type="Label" parent="."]
+position = Vector2(568, 170)
+size = Vector2(62, 20)
+text = "    79"
+
+[node name="LabelNum80" type="Label" parent="."]
+position = Vector2(10, 190)
+size = Vector2(62, 20)
+text = "    80"
+
+[node name="LabelNum81" type="Label" parent="."]
+position = Vector2(72, 190)
+size = Vector2(62, 20)
+text = "    81"
+
+[node name="LabelNum82" type="Label" parent="."]
+position = Vector2(134, 190)
+size = Vector2(62, 20)
+text = "    82"
+
+[node name="LabelNum83" type="Label" parent="."]
+position = Vector2(196, 190)
+size = Vector2(62, 20)
+text = "    83"
+
+[node name="LabelNum84" type="Label" parent="."]
+position = Vector2(258, 190)
+size = Vector2(62, 20)
+text = "    84"
+
+[node name="LabelNum85" type="Label" parent="."]
+position = Vector2(320, 190)
+size = Vector2(62, 20)
+text = "    85"
+
+[node name="LabelNum86" type="Label" parent="."]
+position = Vector2(382, 190)
+size = Vector2(62, 20)
+text = "    86"
+
+[node name="LabelNum87" type="Label" parent="."]
+position = Vector2(444, 190)
+size = Vector2(62, 20)
+text = "    87"
+
+[node name="LabelNum88" type="Label" parent="."]
+position = Vector2(506, 190)
+size = Vector2(62, 20)
+text = "    88"
+
+[node name="LabelNum89" type="Label" parent="."]
+position = Vector2(568, 190)
+size = Vector2(62, 20)
+text = "    89"
+
+[node name="LabelNum90" type="Label" parent="."]
+position = Vector2(10, 210)
+size = Vector2(62, 20)
+text = "    90"
+
+[node name="LabelNum91" type="Label" parent="."]
+position = Vector2(72, 210)
+size = Vector2(62, 20)
+text = "    91"
+
+[node name="LabelNum92" type="Label" parent="."]
+position = Vector2(134, 210)
+size = Vector2(62, 20)
+text = "    92"
+
+[node name="LabelNum93" type="Label" parent="."]
+position = Vector2(196, 210)
+size = Vector2(62, 20)
+text = "    93"
+
+[node name="LabelNum94" type="Label" parent="."]
+position = Vector2(258, 210)
+size = Vector2(62, 20)
+text = "    94"
+
+[node name="LabelNum95" type="Label" parent="."]
+position = Vector2(320, 210)
+size = Vector2(62, 20)
+text = "    95"
+
+[node name="LabelNum96" type="Label" parent="."]
+position = Vector2(382, 210)
+size = Vector2(62, 20)
+text = "    96"
+
+[node name="LabelNum97" type="Label" parent="."]
+position = Vector2(444, 210)
+size = Vector2(62, 20)
+text = "    97"
+
+[node name="LabelNum98" type="Label" parent="."]
+position = Vector2(506, 210)
+size = Vector2(62, 20)
+text = "    98"
+
+[node name="LabelNum99" type="Label" parent="."]
+position = Vector2(568, 210)
+size = Vector2(62, 20)
+text = "    99"
+

@@ -1,0 +1,85 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/VsMenu.gd" id="1"]
+
+[node name="VsMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "VS MODE"
+
+[node name="LabelCursor" type="Label" parent="."]
+position = Vector2(5, 35)
+text = ">"
+
+[node name="LabelP1Name" type="Label" parent="."]
+position = Vector2(22, 35)
+text = "名前   ：1P"
+
+[node name="LabelP1Chara" type="Label" parent="."]
+position = Vector2(22, 65)
+text = "キャラ ：ヤミ"
+
+[node name="LabelP1Kuru" type="Label" parent="."]
+position = Vector2(22, 95)
+text = "くる   ：基本くる"
+
+[node name="LabelP1Item0" type="Label" parent="."]
+position = Vector2(22, 130)
+text = "アイテム1：無し"
+
+[node name="LabelP1Item1" type="Label" parent="."]
+position = Vector2(22, 150)
+text = "アイテム2：無し"
+
+[node name="LabelP1Item2" type="Label" parent="."]
+position = Vector2(22, 170)
+text = "アイテム3：無し"
+
+[node name="LabelP1FullPow" type="Label" parent="."]
+position = Vector2(22, 205)
+text = "フルパワー：off"
+
+[node name="LabelP2Name" type="Label" parent="."]
+position = Vector2(362, 35)
+text = "名前   ：2P"
+
+[node name="LabelP2Chara" type="Label" parent="."]
+position = Vector2(362, 65)
+text = "キャラ ：ヤミ"
+
+[node name="LabelP2Kuru" type="Label" parent="."]
+position = Vector2(362, 95)
+text = "くる   ：基本くる"
+
+[node name="LabelP2Item0" type="Label" parent="."]
+position = Vector2(362, 130)
+text = "アイテム1：無し"
+
+[node name="LabelP2Item1" type="Label" parent="."]
+position = Vector2(362, 150)
+text = "アイテム2：無し"
+
+[node name="LabelP2Item2" type="Label" parent="."]
+position = Vector2(362, 170)
+text = "アイテム3：無し"
+
+[node name="LabelP2FullPow" type="Label" parent="."]
+position = Vector2(362, 205)
+text = "フルパワー：off"
+
+[node name="LabelReplaySave" type="Label" parent="."]
+position = Vector2(200, 270)
+text = "リプレイ保存"
+
+[node name="LabelReplayLoad" type="Label" parent="."]
+position = Vector2(200, 290)
+text = "リプレイ再生"
+
+[node name="LabelStart" type="Label" parent="."]
+position = Vector2(200, 325)
+text = "   START!"
+

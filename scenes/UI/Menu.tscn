@@ -1,0 +1,59 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/Menu.gd" id="1"]
+
+[node name="Menu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "PRACTICE"
+
+[node name="LabelName" type="Label" parent="."]
+position = Vector2(22, 35)
+name_override = "LabelName"
+
+[node name="LabelSpeed" type="Label" parent="."]
+position = Vector2(22, 65)
+
+[node name="LabelPower" type="Label" parent="."]
+position = Vector2(22, 85)
+
+[node name="LabelShot" type="Label" parent="."]
+position = Vector2(22, 105)
+
+[node name="LabelKuruSpeed" type="Label" parent="."]
+position = Vector2(22, 135)
+
+[node name="LabelKuruDankai" type="Label" parent="."]
+position = Vector2(22, 155)
+
+[node name="LabelKuruKankaku" type="Label" parent="."]
+position = Vector2(22, 175)
+
+[node name="LabelItem0" type="Label" parent="."]
+position = Vector2(22, 205)
+
+[node name="LabelItem1" type="Label" parent="."]
+position = Vector2(22, 225)
+
+[node name="LabelItem2" type="Label" parent="."]
+position = Vector2(22, 245)
+
+[node name="LabelReplaySave" type="Label" parent="."]
+position = Vector2(22, 275)
+text = "リプレイ保存"
+
+[node name="LabelReplayLoad" type="Label" parent="."]
+position = Vector2(22, 295)
+text = "リプレイ再生"
+
+[node name="LabelStart" type="Label" parent="."]
+position = Vector2(22, 325)
+text = "START!"
+
+[node name="LabelCursor" type="Label" parent="."]
+position = Vector2(5, 35)
+text = ">"

@@ -1,0 +1,46 @@
+[gd_scene format=3 uid="uid://b4qt2xqv7ktg5"]
+
+[ext_resource type="Script" uid="uid://b6toj6h0htbs8" path="res://scenes/Main/Main.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/Field/Field.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/Player/Player.tscn" id="3"]
+[ext_resource type="Script" uid="uid://c7iwjv7124jdn" path="res://scenes/Main/ComDebugOverlay.gd" id="4_brr1f"]
+
+[node name="Main" type="Node2D" unique_id=1304751546]
+script = ExtResource("1")
+
+[node name="Field" parent="." unique_id=1500614938 instance=ExtResource("2")]
+
+[node name="HardBlockContainer" type="Node2D" parent="." unique_id=1900010001]
+
+[node name="Player1P" parent="." unique_id=1179732106 instance=ExtResource("3")]
+
+[node name="Player2P" parent="." unique_id=1671792223 instance=ExtResource("3")]
+visible = false
+player_num = 1
+
+[node name="KuruContainer" type="Node2D" parent="." unique_id=1074535411]
+
+[node name="BombContainer" type="Node2D" parent="." unique_id=1785191440]
+
+[node name="ChatInputLayer" type="CanvasLayer" parent="." unique_id=1888001001]
+
+[node name="ChatInputPanel" type="PanelContainer" parent="ChatInputLayer" unique_id=1888001002]
+visible = false
+offset_left = 16.0
+offset_top = 486.0
+offset_right = 336.0
+offset_bottom = 528.0
+
+[node name="MarginContainer" type="MarginContainer" parent="ChatInputLayer/ChatInputPanel" unique_id=1888001003]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="ChatLineEdit" type="LineEdit" parent="ChatInputLayer/ChatInputPanel/MarginContainer" unique_id=1888001004]
+layout_mode = 2
+placeholder_text = "メッセージを入力して Enter で送信"
+
+[node name="ComDebugOverlay" type="CanvasLayer" parent="." unique_id=1851331226]
+script = ExtResource("4_brr1f")

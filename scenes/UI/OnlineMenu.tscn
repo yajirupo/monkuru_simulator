@@ -1,0 +1,76 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/OnlineMenu.gd" id="1"]
+
+[node name="OnlineMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "ONLINE MATCH"
+
+[node name="LabelCursor" type="Label" parent="."]
+position = Vector2(5, 35)
+text = ">"
+
+[node name="LabelServer" type="Label" parent="."]
+position = Vector2(22, 35)
+text = "ネット対戦（サーバー）"
+
+[node name="LabelClient" type="Label" parent="."]
+position = Vector2(22, 65)
+text = "ネット対戦（クライアント）"
+
+[node name="LabelIP" type="Label" parent="."]
+position = Vector2(22, 82)
+text = "接続先IP："
+theme_override_font_sizes/font_size = 11
+
+[node name="LabelIPValue" type="Label" parent="."]
+position = Vector2(110, 82)
+text = "127.0.0.1"
+theme_override_font_sizes/font_size = 11
+
+[node name="LabelSep" type="Label" parent="."]
+position = Vector2(22, 100)
+text = "────────────────"
+theme_override_font_sizes/font_size = 10
+
+[node name="LabelCharacter" type="Label" parent="."]
+position = Vector2(22, 115)
+text = "キャラ     ：ヤミ"
+
+[node name="LabelKuru" type="Label" parent="."]
+position = Vector2(22, 145)
+text = "くる       ：基本くる"
+
+[node name="LabelItem0" type="Label" parent="."]
+position = Vector2(22, 185)
+text = "アイテム1  ：無し"
+
+[node name="LabelItem1" type="Label" parent="."]
+position = Vector2(22, 205)
+text = "アイテム2  ：無し"
+
+[node name="LabelItem2" type="Label" parent="."]
+position = Vector2(22, 225)
+text = "アイテム3  ：無し"
+
+[node name="LabelFullPow" type="Label" parent="."]
+position = Vector2(22, 255)
+text = "フルパワー ：on"
+
+[node name="LabelBack" type="Label" parent="."]
+position = Vector2(22, 285)
+text = "戻る"
+
+[node name="LabelStatus" type="Label" parent="."]
+position = Vector2(22, 320)
+text = ""
+
+[node name="LabelHelp" type="Label" parent="."]
+position = Vector2(22, 350)
+text = "IP編集：クライアント選択中に A/S キーで数値変更、←→でオクテット移動"
+theme_override_font_sizes/font_size = 10

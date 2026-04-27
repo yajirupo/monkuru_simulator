@@ -1,0 +1,32 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/MainMenu.gd" id="1"]
+
+[node name="MainMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "ＭＡＩＮ ＭＥＮＵ"
+
+[node name="LabelCursor" type="Label" parent="."]
+position = Vector2(5, 35)
+text = ">"
+
+[node name="LabelItem0" type="Label" parent="."]
+position = Vector2(22, 35)
+text = "練習"
+
+[node name="LabelItem1" type="Label" parent="."]
+position = Vector2(22, 65)
+text = "2P対戦"
+
+[node name="LabelItem2" type="Label" parent="."]
+position = Vector2(22, 95)
+text = "ネット対戦"
+
+[node name="LabelItem3" type="Label" parent="."]
+position = Vector2(22, 125)
+text = "キーコンフィグ"

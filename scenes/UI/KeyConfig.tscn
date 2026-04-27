@@ -1,0 +1,81 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/UI/KeyConfig.gd" id="1"]
+
+[node name="KeyConfig" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LabelTitle" type="Label" parent="."]
+position = Vector2(22, 5)
+text = "KEY CONFIG"
+
+[node name="LabelCursor" type="Label" parent="."]
+position = Vector2(5, 35)
+text = ">"
+
+[node name="LabelAction0" type="Label" parent="."]
+position = Vector2(22, 35)
+text = "移動右"
+
+[node name="LabelKey0" type="Label" parent="."]
+position = Vector2(120, 35)
+text = "---"
+
+[node name="LabelAction1" type="Label" parent="."]
+position = Vector2(22, 55)
+text = "移動左"
+
+[node name="LabelKey1" type="Label" parent="."]
+position = Vector2(120, 55)
+text = "---"
+
+[node name="LabelAction2" type="Label" parent="."]
+position = Vector2(22, 75)
+text = "移動下"
+
+[node name="LabelKey2" type="Label" parent="."]
+position = Vector2(120, 75)
+text = "---"
+
+[node name="LabelAction3" type="Label" parent="."]
+position = Vector2(22, 95)
+text = "移動上"
+
+[node name="LabelKey3" type="Label" parent="."]
+position = Vector2(120, 95)
+text = "---"
+
+[node name="LabelAction4" type="Label" parent="."]
+position = Vector2(22, 115)
+text = "くる発射"
+
+[node name="LabelKey4" type="Label" parent="."]
+position = Vector2(120, 115)
+text = "---"
+
+[node name="LabelAction5" type="Label" parent="."]
+position = Vector2(22, 135)
+text = "アイテム1"
+
+[node name="LabelKey5" type="Label" parent="."]
+position = Vector2(120, 135)
+text = "---"
+
+[node name="LabelAction6" type="Label" parent="."]
+position = Vector2(22, 155)
+text = "アイテム2"
+
+[node name="LabelKey6" type="Label" parent="."]
+position = Vector2(120, 155)
+text = "---"
+
+[node name="LabelAction7" type="Label" parent="."]
+position = Vector2(22, 175)
+text = "アイテム3"
+
+[node name="LabelKey7" type="Label" parent="."]
+position = Vector2(120, 175)
+text = "---"
+

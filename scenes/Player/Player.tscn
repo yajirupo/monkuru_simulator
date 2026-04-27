@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/Player/Player.gd" id="1"]
+
+[sub_resource type="RectangleShape2D" id="1"]
+size = Vector2(28, 28)
+
+[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1")
+player_num = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(16, 16)
+shape = SubResource("1")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(16, 8)
+z_index = 1
+
+[node name="EffectSprite2D" type="Sprite2D" parent="."]
+position = Vector2(16, 16)
+centered = true
+z_index = 2
+
+[node name="NameLabel" type="Label" parent="."]
+position = Vector2(0, 34)
+size = Vector2(64, 16)
+horizontal_alignment = 1
+z_index = 3
