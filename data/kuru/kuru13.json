@@ -1,0 +1,11 @@
+{
+  "name": "チン",
+  "speed": -2,
+  "dankai": 4,
+  "kankaku": 12,
+  "speed_up": 0,
+  "shot_up": 1,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru012.png",
+  "draw_offset_x": 14.0
+}

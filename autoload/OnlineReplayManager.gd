@@ -196,10 +196,7 @@ func apply_sync_events_for_current_frame() -> void:
 			p["y"] = p_y
 			p["muki"] = int(ev.get("muki", p["muki"]))
 			p["speed"] = int(ev.get("speed", p["speed"]))
-			@warning_ignore("integer_division")
-			p["masu_x"] = (p_x + 160) / 320
-			@warning_ignore("integer_division")
-			p["masu_y"] = (p_y + 160) / 320
+			Utility.sync_masu_from_world(p)
 		GameState.online_replay_sync_event_cursor += 1
 
 ## くる生成イベントを現在フレームで記録する。

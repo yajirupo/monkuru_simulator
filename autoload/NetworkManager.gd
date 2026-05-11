@@ -99,7 +99,6 @@ signal peer_disconnected
 signal connection_failed
 signal game_start_requested
 signal remote_player_died
-signal remote_player_respawned
 signal remote_explosion_triggered(masu_x: int, masu_y: int, power: int)
 signal remote_chat_received(player_idx: int, message: String)
 signal clock_sync_completed
@@ -210,12 +209,20 @@ func _send_next_ping() -> void:
 ## サーバー側で Ping を受け取り、受信時刻付きで Pong を返す。
 @rpc("any_peer", "reliable")
 func _rpc_clock_ping(client_t1: int) -> void:
+	if role != Role.SERVER:
+		return
+	if not _is_rpc_from_remote_peer():
+		return
 	var server_t2: int = Time.get_ticks_msec()
 	_rpc_clock_pong.rpc(client_t1, server_t2)
 
 ## クライアント側で Pong を処理し、RTT 最小サンプルから時刻オフセットを確定する。
 @rpc("any_peer", "reliable")
 func _rpc_clock_pong(client_t1: int, server_t2: int) -> void:
+	if role != Role.CLIENT:
+		return
+	if not _is_rpc_from_remote_peer():
+		return
 	var t4: int = Time.get_ticks_msec()
 
 	var rtt_ms: int     = t4 - client_t1
@@ -244,24 +251,6 @@ func _rpc_clock_pong(client_t1: int, server_t2: int) -> void:
 func get_synced_time_ms() -> int:
 	return Time.get_ticks_msec() + _clock_offset_ms
 
-## 計測した RTT の最小値を返す（デバッグ・UI 表示用）
-func get_min_rtt_ms() -> int:
-	if _ping_samples.is_empty():
-		return -1
-	var min_rtt: int = _ping_samples[0][0]
-	for s: Array in _ping_samples:
-		if s[0] < min_rtt:
-			min_rtt = s[0]
-	return min_rtt
-
-## ドロップ率を返す（デバッグ・UI 表示用）
-## 戻り値: 0.0 〜 1.0
-func get_drop_rate() -> float:
-	var total := _recv_count + _drop_count
-	if total == 0:
-		return 0.0
-	return float(_drop_count) / float(total)
-
 
 # ─── Ready ───────────────────────────────────────────────────
 ## 自分の準備完了状態と設定値を相手へ通知し、ゲーム開始判定を進める。
@@ -273,10 +262,13 @@ func send_ready() -> void:
 	var st: int          = GameState.clamp_stage(int(om.get("stage", 0)))
 	var kdef: Dictionary = Constants.get_kuru_def(kt)
 	_rpc_ready_with_stats.rpc(
-		om.get("name", "Player") as String,
+		GameState.sanitize_chat_text(
+			om.get("name", "Player") as String,
+			GameState.CHAT_MAX_NAME_LENGTH
+		),
 		ch, kt, st,
 		0, 0, 0,
-		kdef["speed"], kdef["dankai"], kdef["kankaku"],
+		Constants.kuru_speed_stat_to_move_speed(int(kdef["speed"])), kdef["dankai"], kdef["kankaku"],
 		om["item_type"][0], om["item_type"][1], om["item_type"][2]
 	)
 	_check_game_start()
@@ -293,7 +285,8 @@ func _rpc_ready_with_stats(
 		return
 	peer_ready = true
 	remote_stats = {
-		"name": p_name, "character": p_character, "kuru_type": p_kuru_type,
+		"name": GameState.sanitize_chat_text(p_name, GameState.CHAT_MAX_NAME_LENGTH),
+		"character": p_character, "kuru_type": p_kuru_type,
 		"stage": GameState.clamp_stage(p_stage),
 		"speed": p_speed, "shot": p_shot, "power": p_power,
 		"kuru_speed": p_kuru_speed, "kuru_dankai": p_kuru_dankai,
@@ -402,10 +395,6 @@ func _rpc_frame_state_v2(history: PackedInt32Array) -> void:
 func send_death_event(player_idx: int) -> void:
 	_rpc_death_event.rpc(player_idx)
 
-## 復活イベントを reliable RPC で相手へ送信する。
-func send_respawn_event(player_idx: int) -> void:
-	_rpc_respawn_event.rpc(player_idx)
-
 @rpc("any_peer", "reliable")
 ## 相手の死亡イベントを受信し、リプレイ記録と通知シグナル発火を行う。
 func _rpc_death_event(player_idx: int) -> void:
@@ -418,19 +407,6 @@ func _rpc_death_event(player_idx: int) -> void:
 				{"player_idx": player_idx}
 			)
 		remote_player_died.emit()
-
-@rpc("any_peer", "reliable")
-## 相手の復活イベントを受信し、リプレイ記録と通知シグナル発火を行う。
-func _rpc_respawn_event(player_idx: int) -> void:
-	if not _is_rpc_from_remote_peer():
-		return
-	if player_idx == remote_player_index():
-		if GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME:
-			OnlineReplayManager.record_state_event(
-				OnlineReplayManager.STATE_EVENT_RESPAWN,
-				{"player_idx": player_idx}
-			)
-		remote_player_respawned.emit()
 
 
 # ─── 0.5秒おき: プレイヤー位置・向き・速さ（reliable）──────
@@ -453,10 +429,7 @@ func _rpc_player_sync(p_x: int, p_y: int, p_muki: int, p_speed: int) -> void:
 	p["x"]    = p_x
 	p["y"]    = p_y
 	p["muki"] = p_muki
-	@warning_ignore("integer_division")
-	p["masu_x"] = (p_x + 160) / 320
-	@warning_ignore("integer_division")
-	p["masu_y"] = (p_y + 160) / 320
+	Utility.sync_masu_from_world(p)
 	p["speed"] = p_speed
 
 
@@ -490,7 +463,12 @@ func _rpc_kuru_spawn(
 		return
 	if KURU_SCENE == null:
 		return
-
+	
+	var scene_root: Node = (Engine.get_main_loop() as SceneTree).current_scene
+	var container := scene_root.get_node_or_null("KuruContainer")
+	if container == null:
+		return
+	
 	if GameState.player.size() > player_idx:
 		var shooter: Dictionary = GameState.player[player_idx]
 		SoundManager.play_shot(int(shooter.get("character", 0)))
@@ -504,14 +482,10 @@ func _rpc_kuru_spawn(
 	var kuru_node = KURU_SCENE.instantiate()
 	kuru_node.data["x"]         = p_x
 	kuru_node.data["y"]         = p_y
-	@warning_ignore("integer_division")
-	kuru_node.data["masu_x"]    = (p_x + 160) / 320
-	@warning_ignore("integer_division")
-	kuru_node.data["masu_y"]    = (p_y + 160) / 320
-	@warning_ignore("integer_division")
-	kuru_node.data["bomb_x"]    = (p_x + 160) / 320
-	@warning_ignore("integer_division")
-	kuru_node.data["bomb_y"]    = (p_y + 160) / 320
+	Utility.sync_masu_from_world(kuru_node.data)
+	var bomb_center := Utility.kuru_bomb_center(p_x, p_y, muki)
+	kuru_node.data["bomb_x"]    = bomb_center.x
+	kuru_node.data["bomb_y"]    = bomb_center.y
 	kuru_node.data["muki"]      = muki
 	kuru_node.data["move_muki"] = move_muki
 	kuru_node.data["speed"]     = speed
@@ -519,22 +493,13 @@ func _rpc_kuru_spawn(
 	kuru_node.data["power"]     = power
 	kuru_node.data["player"]    = player_idx
 	kuru_node.data["kuru_type"] = kuru_type
-
-	var scene_root: Node = (Engine.get_main_loop() as SceneTree).current_scene
-	var container := scene_root.get_node_or_null("KuruContainer")
-	if container:
-		container.add_child(kuru_node)
-		kuru_node._sync_position()
-		kuru_node._update_sprite()
+	
+	container.add_child(kuru_node)
 	if GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME:
 		OnlineReplayManager.record_kuru_event(kuru_node.data)
 
 
 # ─── 爆発イベント（reliable）────────────────────────────────
-## 爆発イベントを reliable RPC で相手へ通知する。
-func send_explosion(masu_x: int, masu_y: int, power: int) -> void:
-	_rpc_explosion.rpc(masu_x, masu_y, power)
-
 @rpc("any_peer", "reliable")
 ## 相手の爆発イベントを受信し、リプレイ記録と通知シグナル発火を行う。
 func _rpc_explosion(masu_x: int, masu_y: int, power: int) -> void:
@@ -550,17 +515,20 @@ func _rpc_explosion(masu_x: int, masu_y: int, power: int) -> void:
 
 ## チャットメッセージを相手へ送信する。
 func send_chat_message(player_idx: int, message: String) -> void:
-	_rpc_chat_message.rpc(player_idx, message)
+	var safe_message := GameState.sanitize_chat_text(message, GameState.CHAT_MAX_MESSAGE_LENGTH)
+	if safe_message == "":
+		return
+	_rpc_chat_message.rpc(player_idx, safe_message)
 
 @rpc("any_peer", "reliable")
 ## 相手から受信したチャットを UI 側へシグナル通知する。
-func _rpc_chat_message(player_idx: int, message: String) -> void:
+func _rpc_chat_message(_player_idx: int, message: String) -> void:
 	if not _is_rpc_from_remote_peer():
 		return
-	var sender_idx := remote_player_index()
-	if player_idx >= 0 and player_idx < Constants.MAX_PLAYER:
-		sender_idx = player_idx
-	remote_chat_received.emit(sender_idx, message)
+	var safe_message := GameState.sanitize_chat_text(message, GameState.CHAT_MAX_MESSAGE_LENGTH)
+	if safe_message == "":
+		return
+	remote_chat_received.emit(remote_player_index(), safe_message)
 
 
 # ─── ヘルパー ─────────────────────────────────────────────────

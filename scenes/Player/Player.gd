@@ -20,12 +20,14 @@ const KURU_SCENE: PackedScene = preload("res://scenes/Kuru/Kuru.tscn")
 # struct player_t の移植
 # ============================================================
 static func make_player_data() -> Dictionary:
+	@warning_ignore("integer_division")
+	var spd: int = Constants.PLAYER_DEFAULT_SPEED / 2
 	return {
 		"masu_x":        0,
 		"masu_y":        0,
 		"x":             0,     # 単位: 0.1px（C++互換）
 		"y":             0,
-		"speed":         Constants.PLAYER_DEFAULT_SPEED,
+		"speed":         spd,
 		"muki":          Enums.Muki.DOWN,
 		"item_speed":    Constants.PLAYER_DEFAULT_ITEM_SPEED,
 		"item_shot":     Constants.PLAYER_DEFAULT_ITEM_SHOT,
@@ -35,7 +37,7 @@ static func make_player_data() -> Dictionary:
 		"max_power":     Constants.PLAYER_DEFAULT_ITEM_POWER,
 		"shot_count":    0,
 		"shot_kuru":     0,
-		"kuru_speed":    0,
+		"kuru_speed":    Constants.kuru_speed_stat_to_move_speed(0),
 		"kuru_dankai":   5,
 		"kuru_kankaku":  12,
 		"life_flag":     true,
@@ -120,10 +122,10 @@ func ini_player() -> void:
 			p["max_shot"]      = d["shot"]
 			p["item_power"]    = d["power"]
 			p["max_power"]     = d["power"]
-			p["kuru_speed"]    = d["kuru_speed"]
+			p["kuru_speed"]    = Constants.kuru_speed_stat_to_move_speed(int(d["kuru_speed"]))
 			p["kuru_dankai"]   = d["kuru_dankai"]
 			p["kuru_kankaku"]  = d["kuru_kankaku"]
-			p["speed"]         = Constants.PLAYER_DEFAULT_SPEED + p["item_speed"] * Constants.PLAYER_SPEED_UP
+			p["speed"]         = (Constants.PLAYER_DEFAULT_SPEED + p["item_speed"] * Constants.PLAYER_SPEED_UP) / 2
 			for i in range(3):
 				p["cr_item"][i] = d["item_type"][i]
 		else:
@@ -157,22 +159,24 @@ func ini_player() -> void:
 			pi["kuru_type"]  = Constants.get_practice_kuru_type()
 			pi["character"]  = Enums.PlayerType.YAMI
 		elif num == 2:
-			var kt: int = pi["kuru_type"]
-			var ch: int = pi["character"]
-			var max_stats: Dictionary = Constants.get_character_max_stats(ch)
-			var kuru_def:  Dictionary = Constants.get_kuru_def(kt)
-			pi["max_speed"] = int(max_stats["speed"]) + int(kuru_def["speed_up"])
-			pi["max_shot"]  = int(max_stats["shot"])  + int(kuru_def["shot_up"])
-			pi["max_power"] = int(max_stats["power"]) + int(kuru_def["power_up"])
+			var is_online_setup := GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME
+			if not is_online_setup:   # オンラインはOnlineGameSetup.setup()で設定済み
+				var kt: int = pi["kuru_type"]
+				var ch: int = pi["character"]
+				var max_stats: Dictionary = Constants.get_character_max_stats(ch)
+				var kuru_def:  Dictionary = Constants.get_kuru_def(kt)
+				pi["max_speed"] = int(max_stats["speed"]) + int(kuru_def["speed_up"])
+				pi["max_shot"]  = int(max_stats["shot"])  + int(kuru_def["shot_up"])
+				pi["max_power"] = int(max_stats["power"]) + int(kuru_def["power_up"])
 
-			pi["item_speed"] = pi["max_speed"]
-			pi["item_shot"]  = pi["max_shot"]
-			pi["item_power"] = pi["max_power"]
+				pi["item_speed"] = pi["max_speed"]
+				pi["item_shot"]  = pi["max_shot"]
+				pi["item_power"] = pi["max_power"]
 
-			pi["speed"]        = Constants.PLAYER_DEFAULT_SPEED + pi["item_speed"] * Constants.PLAYER_SPEED_UP
-			pi["kuru_speed"]   = int(kuru_def["speed"])
-			pi["kuru_dankai"]  = int(kuru_def["dankai"])
-			pi["kuru_kankaku"] = int(kuru_def["kankaku"])
+				pi["speed"]        = (Constants.PLAYER_DEFAULT_SPEED + pi["item_speed"] * Constants.PLAYER_SPEED_UP) / 2
+				pi["kuru_speed"]   = Constants.kuru_speed_stat_to_move_speed(int(kuru_def["speed"]))
+				pi["kuru_dankai"]  = int(kuru_def["dankai"])
+				pi["kuru_kankaku"] = int(kuru_def["kankaku"])
 
 		pi["cr_item_use"]   = Enums.ItemType.NO_ITEM
 		pi["cr_item_count"] = 0
@@ -247,10 +251,9 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 	var move: int
 
 	if pi["cr_item_use"] != Enums.ItemType.SHOES:
-		move = pi["speed"] / 2
+		move = pi["speed"]
 	else:
-		@warning_ignore("integer_division")
-		move = Constants.SHOES_SPEED / 2
+		move = Constants.SHOES_SPEED
 
 	if kuru_shot_flag:
 		move = 0
@@ -277,8 +280,8 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 				var front_x: int = (next_x + 319) / 320
 				var cell_top: int = pi["y"] / 320
 				var cell_bottom: int = (pi["y"] + 319) / 320
-				var top_hard: bool = _is_hard_block_cell(front_x, cell_top)
-				var bottom_hard: bool = _is_hard_block_cell(front_x, cell_bottom)
+				var top_hard: bool = not Utility.is_walkable_cell(front_x, cell_top)
+				var bottom_hard: bool = not Utility.is_walkable_cell(front_x, cell_bottom)
 
 				if top_hard or bottom_hard:
 					if top_hard and bottom_hard:
@@ -313,8 +316,8 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 				var front_x: int = next_x / 320
 				var cell_top: int = pi["y"] / 320
 				var cell_bottom: int = (pi["y"] + 319) / 320
-				var top_hard: bool = _is_hard_block_cell(front_x, cell_top)
-				var bottom_hard: bool = _is_hard_block_cell(front_x, cell_bottom)
+				var top_hard: bool = not Utility.is_walkable_cell(front_x, cell_top)
+				var bottom_hard: bool = not Utility.is_walkable_cell(front_x, cell_bottom)
 
 				if top_hard or bottom_hard:
 					if top_hard and bottom_hard:
@@ -349,8 +352,8 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 				var front_y: int = (next_y + 319) / 320
 				var cell_left: int = pi["x"] / 320
 				var cell_right: int = (pi["x"] + 319) / 320
-				var left_hard: bool = _is_hard_block_cell(cell_left, front_y)
-				var right_hard: bool = _is_hard_block_cell(cell_right, front_y)
+				var left_hard: bool = not Utility.is_walkable_cell(cell_left, front_y)
+				var right_hard: bool = not Utility.is_walkable_cell(cell_right, front_y)
 
 				if left_hard or right_hard:
 					if left_hard and right_hard:
@@ -385,8 +388,8 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 				var front_y: int = next_y / 320
 				var cell_left: int = pi["x"] / 320
 				var cell_right: int = (pi["x"] + 319) / 320
-				var left_hard: bool = _is_hard_block_cell(cell_left, front_y)
-				var right_hard: bool = _is_hard_block_cell(cell_right, front_y)
+				var left_hard: bool = not Utility.is_walkable_cell(cell_left, front_y)
+				var right_hard: bool = not Utility.is_walkable_cell(cell_right, front_y)
 
 				if left_hard or right_hard:
 					if left_hard and right_hard:
@@ -415,8 +418,7 @@ func _player_move(kuru_shot_flag: bool, num: int) -> void:
 			_set_joutai(pi, pi["muki"])  # Muki と STAND_* が対応
 
 	# マス座標を更新（四捨五入相当）
-	pi["masu_x"] = (pi["x"] + 160) / 320
-	pi["masu_y"] = (pi["y"] + 160) / 320
+	Utility.sync_masu_from_world(pi)
 
 	if num == player_num:
 		_sync_position()
@@ -436,7 +438,7 @@ func _player_shot(num: int) -> bool:
 			(pi["cr_item_use"] != Enums.ItemType.ROCKET
 			 and pi["cr_item_use"] != Enums.ItemType.BROTHER
 			 and pi["shot_kuru"] < pi["item_shot"])
-			or (pi["cr_item_use"] == Enums.ItemType.BROTHER and pi["shot_kuru"] < 11)
+			or (pi["cr_item_use"] == Enums.ItemType.BROTHER and pi["shot_kuru"] < 12)
 			or (pi["cr_item_use"] == Enums.ItemType.ROCKET  and pi["shot_kuru"] < 6)
 		)
 	)
@@ -471,12 +473,12 @@ func _spawn_kuru(pi: Dictionary, num: int, move_muki: int, is_brother: bool = fa
 		if num != NetworkManager.my_player_index():
 			return
 
-	var kuru_node = KURU_SCENE.instantiate()
-	kuru_node.init_kuru(pi, num, move_muki, is_brother)
 	var current_scene := get_tree().current_scene
 	var container := current_scene.get_node_or_null("KuruContainer") if current_scene else null
 	if container == null:
 		return
+	var kuru_node = KURU_SCENE.instantiate()
+	kuru_node.init_kuru(pi, num, move_muki, is_brother)
 	container.add_child(kuru_node)
 
 	# オンライン時: 自分のくる射出を相手に通知
@@ -506,31 +508,14 @@ func _player_hit_bomb(num: int) -> void:
 	for bomb_node in bomb_container.get_children():
 		var b: Dictionary = bomb_node.data
 		var cnt: int = b["count"]
-
-		# 爆風中心
 		if cnt >= 0 and cnt <= Constants.BOMB_SPREAD_TIME:
 			if pi["masu_x"] == b["masu_x"] and pi["masu_y"] == b["masu_y"]:
 				_kill_player(num)
 				return
 
-		# 火力分の爆風
-		for i in range(1, b["power"] + 1):
-			if cnt >= i * Constants.BOMB_SPREAD_TIME and cnt <= (i + 1) * Constants.BOMB_SPREAD_TIME:
-				var mx: int = pi["masu_x"]
-				var my: int = pi["masu_y"]
-				var bx: int = b["masu_x"]
-				var by: int = b["masu_y"]
-				if (
-					(mx == bx + i and my == by and not _is_blast_blocked(bx, by, 1, 0, i)) or
-					(mx == bx - i and my == by and not _is_blast_blocked(bx, by, -1, 0, i)) or
-					(mx == bx and my == by + i and not _is_blast_blocked(bx, by, 0, 1, i)) or
-					(mx == bx and my == by - i and not _is_blast_blocked(bx, by, 0, -1, i))
-				):
-					_kill_player(num)
-					return
-
 
 func _kill_player(num: int) -> void:
+	#if num == 1: breakpoint
 	var pi: Dictionary = GameState.player[num]
 	var is_practice_mode := GameState.joutai_flag == Enums.JoutaiType.SINGLE_GAME
 	SoundManager.play_death(int(pi.get("character", 0)), is_practice_mode)
@@ -647,47 +632,6 @@ func _set_joutai(pi: Dictionary, new_joutai: int) -> void:
 	if pi["joutai"] != new_joutai:
 		pi["joutai_count"] = 0
 		pi["joutai"]       = new_joutai
-
-func _is_hard_block_cell(cell_x: int, cell_y: int) -> bool:
-	if cell_x < 0 or cell_x >= Constants.FIELD_COLS:
-		return false
-	if cell_y < 0 or cell_y >= Constants.FIELD_ROWS:
-		return false
-	return GameState.masu[cell_y][cell_x]["kind"] == Enums.MasuKind.HARD_BLOCK
-
-func _is_blast_blocked(origin_x: int, origin_y: int, step_x: int, step_y: int, distance: int) -> bool:
-	for step in range(1, distance + 1):
-		if _is_hard_block_cell(origin_x + step_x * step, origin_y + step_y * step):
-			return true
-	return false
-
-func _is_hard_block_collision_right(next_x: int, current_y: int) -> bool:
-	@warning_ignore("integer_division")
-	var front_x: int = (next_x + 319) / 320
-	@warning_ignore("integer_division")
-	return _is_hard_block_cell(front_x, current_y / 320) \
-		or _is_hard_block_cell(front_x, (current_y + 319) / 320)
-
-func _is_hard_block_collision_left(next_x: int, current_y: int) -> bool:
-	@warning_ignore("integer_division")
-	var front_x: int = next_x / 320
-	@warning_ignore("integer_division")
-	return _is_hard_block_cell(front_x, current_y / 320) \
-		or _is_hard_block_cell(front_x, (current_y + 319) / 320)
-
-func _is_hard_block_collision_down(current_x: int, next_y: int) -> bool:
-	@warning_ignore("integer_division")
-	var front_y: int = (next_y + 319) / 320
-	@warning_ignore("integer_division")
-	return _is_hard_block_cell(current_x / 320, front_y) \
-		or _is_hard_block_cell((current_x + 319) / 320, front_y)
-
-func _is_hard_block_collision_up(current_x: int, next_y: int) -> bool:
-	@warning_ignore("integer_division")
-	var front_y: int = next_y / 320
-	@warning_ignore("integer_division")
-	return _is_hard_block_cell(current_x / 320, front_y) \
-		or _is_hard_block_cell((current_x + 319) / 320, front_y)
 
 func _sync_position() -> void:
 	# C++ 座標（0.1px 単位）→ Godot float px

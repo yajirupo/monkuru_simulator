@@ -1,8 +1,83 @@
-# Godot-specific ignores
+# =========================
+# Godot Engine
+# =========================
+
+# Godot 4.x
 .godot/
+
+# Godot 3.x
 .import/
+
+# Exported files
+export.cfg
 export_presets.cfg
 
-# OS-specific ignores
-.DS_Store
+# Mono / C# (使ってる場合)
+.mono/
+data_*/
+*.csproj
+*.sln
+
+# =========================
+# OS / Editor junk
+# =========================
+
+# Windows
 Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# =========================
+# IDE / エディタ
+# =========================
+
+# Visual Studio Code
+.vscode/
+
+# Visual Studio
+.vs/
+*.vcxproj*
+*.user
+*.suo
+
+# JetBrains (CLion, Riderなど)
+.idea/
+
+# =========================
+# Logs / 一時ファイル
+# =========================
+
+*.log
+*.tmp
+*.temp
+
+# =========================
+# ビルド成果物
+# =========================
+
+bin/
+build/
+dist/
+
+# =========================
+# その他
+# =========================
+
+# バックアップ
+*.bak
+*.old
+*.orig
+
+# =========================
+# Godot User Data (Symbolic Link)
+# =========================
+# user_data フォルダ自体は管理するが、中の一時ファイルを除外
+user_data/logs/
+user_data/shader_cache/
+user_data/tmp/
+user_data/*.log

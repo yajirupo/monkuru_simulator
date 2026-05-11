@@ -8,32 +8,6 @@ var key: Array[int] = []
 
 # DXキーコード定数
 const KEY_INPUT_ESCAPE  := 0x01
-const KEY_INPUT_RETURN  := 0x1C
-const KEY_INPUT_SPACE   := 0x39
-const KEY_INPUT_LEFT    := 0xCB
-const KEY_INPUT_RIGHT   := 0xCD
-const KEY_INPUT_UP      := 0xC8
-const KEY_INPUT_DOWN    := 0xD0
-const KEY_INPUT_A := 0x1E; const KEY_INPUT_B := 0x30
-const KEY_INPUT_C := 0x2E; const KEY_INPUT_D := 0x20
-const KEY_INPUT_E := 0x12; const KEY_INPUT_F := 0x21
-const KEY_INPUT_G := 0x22; const KEY_INPUT_H := 0x23
-const KEY_INPUT_I := 0x17; const KEY_INPUT_J := 0x24
-const KEY_INPUT_K := 0x25; const KEY_INPUT_L := 0x26
-const KEY_INPUT_M := 0x32; const KEY_INPUT_N := 0x31
-const KEY_INPUT_O := 0x18; const KEY_INPUT_P := 0x19
-const KEY_INPUT_Q := 0x10; const KEY_INPUT_R := 0x13
-const KEY_INPUT_S := 0x1F; const KEY_INPUT_T := 0x14
-const KEY_INPUT_U := 0x16; const KEY_INPUT_V := 0x2F
-const KEY_INPUT_W := 0x11; const KEY_INPUT_X := 0x2D
-const KEY_INPUT_Y := 0x15; const KEY_INPUT_Z := 0x2C
-const KEY_INPUT_SEMICOLON  := 0x27
-const KEY_INPUT_COLON      := 0x28
-const KEY_INPUT_BACKSLASH  := 0x2B
-const KEY_INPUT_MULTIPLY   := 0x37  # テンキー *
-const KEY_INPUT_ADD        := 0x4E  # テンキー +
-const KEY_INPUT_SUBTRACT   := 0x4A  # テンキー -
-const KEY_INPUT_DIVIDE     := 0x35  # テンキー /
 
 # DXキーコード → Godot Key の対応表（配列で管理）
 # [dx_code, godot_key] のペア
@@ -138,16 +112,6 @@ func zero_player_input() -> void:
 			var my_idx := NetworkManager.my_player_index()
 			for i in range(8):
 				GameState.use_key[my_idx][i] = 0
-		
-func is_down(dx_code: int) -> bool:
-	return key[dx_code] > 0
-
-func just_pressed(dx_code: int) -> bool:
-	return key[dx_code] == 1
-
-func repeat(dx_code: int) -> bool:
-	var k: int = key[dx_code]
-	return k == 1 or (k > 18 and k % 4 == 0)
 
 func update_use_keys_for_player(player_idx: int) -> void:
 	# ONLINE_GAMEでは常に練習モード用キー(use_key_single)を自分のインデックスに設定

@@ -1,496 +1,492 @@
+# scenes/Main/ComDangerDetector.gd
 class_name ComDangerDetector
-extends RefCounted
+extends Node
 
-# 「被弾しない安全なマスなし」を表す定数
-const SAFE_INF := 99999
-
-# くるの残り爆発フレーム閾値：この値未満になると接触で即爆発
-# count は 正 → 0（爆発）へカウントダウンする前提。
-const KURU_DANGER_FRAMES := 180
-
-# find_bomb_danger()（即時危険フラグ）でくるを「今すぐ逃げるべき危険」と判断する
-# 爆発残りフレームの上限。この値以上先に爆発するくるは BFS に任せ、
-# 即時危険扱いにしない。値を大きくすると逃げが早まる（攻撃積極性が落ちる）。
-const KURU_IMMDANGER_FRAMES: int = KURU_DANGER_FRAMES
-
-
-# ============================================================
-# _predict_kuru_explosion()
+# ====================================================================
+#  COM の危険予測・危険度マップ管理クラス
 #
-# くるが実際に爆発するときの予測マス座標と爆発フレームを返す。
+#  【役割】
+#   フィールド上の爆弾 (Bomb) と くる (Kuru) の爆発予測を行い、
+#   各マスの「被弾開始までのフレーム数」を計算して危険度マップとして保持する。
 #
-# ■ 戻り値 Dictionary
-#   "pos"   : Vector2i  爆発中心マス（bomb_x / bomb_y 相当）
-#   "frame" : int       今から何フレーム後に爆発するか
-#                       （壁衝突による早期爆発を含む）
+#  【主な機能】
+#   ・既存の爆弾の危険情報を参照し、危険マップに登録する
+#   ・くるが現在の爆弾の爆風に巻き込まれて早期爆発するかどうかを判定する
+#   ・くるが壁に衝突して早期爆発、または寿命で爆発する場合の爆発位置と時刻を計算する
+#   ・得られた爆発を危険マップに反映する
 #
-# ■ 壁での早期爆発（kuru_move() の count = 0 強制）
-#   進行方向に壁があり、壁到達時の count が 3*KURU_DANKAI_TIME 以下なら即爆発する。
+#  【危険度マップのデータ構造】
+#   _danger_map[x][y] : int
+#     9999  → 安全（被弾しない）
+#        0  → 現在すでに危険（当たり判定が存在する）
+#       >0  → そのフレーム数後に爆風の当たり判定が発生し始める
 #
-# ■ speed == 0 の場合
-#   move = 0 となり位置は変化しない。"frame" = count（通常爆発）。
-# ============================================================
-func _predict_kuru_explosion(kd: Dictionary) -> Dictionary:
-	var sx:        int = int(kd.get("x",         0))
-	var sy:        int = int(kd.get("y",         0))
-	var speed:     int = int(kd.get("speed",     0))
-	var count:     int = int(kd.get("count",     0))
-	var muki:      int = int(kd.get("muki",      Enums.Muki.DOWN))
-	var move_muki: int = int(kd.get("move_muki", muki))
+#  【定数】
+#   DANGER_FRAME_THRESHOLD : このフレーム数以内に被弾し始めるマスを「危険」と判定する閾値
+#   EARLY_EXPLOSION_THRESHOLD : 壁衝突時に爆発する残り寿命の閾値 (180 フレーム)
+#
+#  【注意】
+#   くる同士の連鎖誘爆は考慮しない（計算量削減のため）。爆弾との誘爆のみ判定する。
+# ====================================================================
 
-	# Kuru.gd kuru_move() と同一: 1フレームあたりの移動量（サブピクセル）
-	@warning_ignore("integer_division")
-	var move: int = speed / 2
+# --- 危険度マップ本体（外部から問い合わせ可能） ---
+var _danger_map: Array = []          # 座標系: [x][y] (x: 0..17, y: 0..11)
 
-	# ── count フレーム後のサブピクセル座標と実際の爆発フレームを計算 ──────
-	var final_x:        int = sx
-	var final_y:        int = sy
-	var explosion_frame: int = count  # デフォルト: カウントダウン通り
+# --- 外部から注入されるコンテナ ---
+var _bomb_container: Node = null     # 爆弾ノードの親
+var _kuru_container: Node = null     # くるノードの親
+var _field_masu: Array = []          # フィールドのマス情報 (壁かどうかなど)
 
-	# くるの爆発閾値（3段階時間 * 3 = 3秒相当）
-	var threshold: int = 3 * Constants.KURU_DANKAI_TIME
+# --- 危険判定の閾値（被弾開始までの猶予フレーム） ---
+const DANGER_FRAME_THRESHOLD: int = 60   # 1 秒以内に被弾し始めるなら「危険」とみなす
+
+# --- 壁衝突による早期爆発の閾値 ---
+const EARLY_EXPLOSION_THRESHOLD: int = 3 * Constants.KURU_DANKAI_TIME  # 180 フレーム
+
+
+# ====================================================================
+#  初期化
+# ====================================================================
+func initialize(field_masu: Array) -> void:
+	_field_masu = field_masu
+	_reset_map()
+
+
+# --------------------------------------------------------------------
+# 危険度マップを全マス 9999 (安全) でリセットする
+# --------------------------------------------------------------------
+func _reset_map() -> void:
+	_danger_map.clear()
+	for x in range(Constants.FIELD_COLS):
+		var col: Array = []
+		col.resize(Constants.FIELD_ROWS)
+		col.fill(9999)        # 9999 = 安全
+		_danger_map.append(col)
+
+
+# ====================================================================
+#  メインエントリ：毎フレーム呼ばれる
+# ====================================================================
+#  処理の流れ：
+#   1. 既存の爆弾 (Bomb) を危険マップに登録する
+#   2. 各くるについて、危険マップを参照しながら爆発判定を行い、
+#      その爆発を逐次に危険マップに追加する
+#   3. くるを踏んで自爆することを防ぐため、赤くなりかけているくる周辺のマスの危険度を超高くする
+# ====================================================================
+func build_event_list(bomb_container: Node, kuru_container: Node) -> void:
+	_bomb_container = bomb_container
+	_kuru_container = kuru_container
+	_reset_map()
+
+	# 1. 既存 Bomb の危険を危険マップに登録
+	if _bomb_container:
+		for bomb in _bomb_container.get_children():
+			_register_bomb_danger(bomb)
+
+	# 2. 各くるの爆発を計算し、危険マップに反映
+	#    （危険マップは逐次更新され、後続のくるの誘爆判定にも使われる）
+	if _kuru_container:
+		for _pass in range(5): # 誘爆を 5 段階まで考慮
+			for kuru in _kuru_container.get_children():
+				# くるの爆発計算（現在の危険マップ全体を参照し、爆弾＋既に計算したくるの爆発を考慮）
+				var explosion = _compute_kuru_explosion(kuru, _danger_map)
+				if not explosion.is_empty():
+					_register_kuru_explosion(explosion["bomb_x"], explosion["bomb_y"],
+											explosion["power"], explosion["explosion_frame"])
 	
-	if move > 0:
-		match move_muki:
-			Enums.Muki.RIGHT:
-				var raw: int = sx + move * count
-				if raw >= Constants.MAP_SIZE_X:
-					@warning_ignore("integer_division")
-					var frames_to_wall: int = (Constants.MAP_SIZE_X - sx + move - 1) / move
-					final_x = Constants.MAP_SIZE_X
-					# 壁到達時、カウントが閾値以下なら即爆発。
-					explosion_frame = max(frames_to_wall, count - threshold)
-				else:
-					final_x = raw
-			Enums.Muki.LEFT:
-				var raw: int = sx - move * count
-				if raw <= 0:
-					@warning_ignore("integer_division")
-					var frames_to_wall: int = (sx + move - 1) / move
-					final_x = 0
-					explosion_frame = max(frames_to_wall, count - threshold)
-				else:
-					final_x = raw
-			Enums.Muki.DOWN:
-				var raw: int = sy + move * count
-				if raw >= Constants.MAP_SIZE_Y:
-					@warning_ignore("integer_division")
-					var frames_to_wall: int = (Constants.MAP_SIZE_Y - sy + move - 1) / move
-					final_y = Constants.MAP_SIZE_Y
-					explosion_frame = max(frames_to_wall, count - threshold)
-				else:
-					final_y = raw
-			Enums.Muki.UP:
-				var raw: int = sy - move * count
-				if raw <= 0:
-					@warning_ignore("integer_division")
-					var frames_to_wall: int = (sy + move - 1) / move
-					final_y = 0
-					explosion_frame = max(frames_to_wall, count - threshold)
-				else:
-					final_y = raw
+	# 3. くるを踏んで自爆してしまうことの抑制
+	if _kuru_container:
+		for kuru in _kuru_container.get_children():
+			var kd: Dictionary = kuru.data			
+			# 爆発まで3秒（触れると即爆発する状態）
+			if kd["count"] < 3 * Constants.KURU_DANKAI_TIME:
+				# 現在くるがいるマスを即危険に設定（踏むの防止）
+				var mx: int = kd["masu_x"]
+				var my: int = kd["masu_y"]
+				if Utility.is_walkable_cell(mx, my):
+					if _danger_map[mx][my] > 1:
+						_danger_map[mx][my] = 1
+				
+				# 爆心地マスを即危険に設定（踏んじゃったときの即死防止）
+				var bx: int = kd["bomb_x"]
+				var by: int = kd["bomb_y"]
+				if Utility.is_walkable_cell(bx, by):
+					if _danger_map[bx][by] > 9:
+						_danger_map[bx][by] = 9
 
-	# ── bomb_x / bomb_y を Kuru.gd kuru_move() と同一の式で計算 ─────────────
-	# muki（発射方向）に応じて「先端マス」を求める。
-	# move_muki（実移動方向）ではなく muki を使う点に注意。
+
+# --------------------------------------------------------------------
+# 既存の爆弾 (Bomb) を危険マップに登録する
+# count 値に応じて被弾開始フレームを計算してマップに記録する
+# --------------------------------------------------------------------
+func _register_bomb_danger(bomb: Node) -> void:
+	if not bomb.has_method("get_data") and not "data" in bomb:
+		return
+	var data: Dictionary = bomb.data
+	var bx: int = data["masu_x"]
+	var by: int = data["masu_y"]
+	if bx < 0 or bx >= Constants.FIELD_COLS or by < 0 or by >= Constants.FIELD_ROWS:
+		return
+	var count: int = data["count"]
+	# count が BOMB_SPREAD_TIME を超えている爆弾はすでに消えているので無視
+	if count > Constants.BOMB_SPREAD_TIME:
+		return
+	# count の符号から被弾開始フレームを計算（負の値なら未来、正の値なら現在危険）
+	var start_frame: int = -count if count < 0 else 0
+
+	# そのマスの既存の値より早い開始なら更新
+	if start_frame < _danger_map[bx][by]:
+		_danger_map[bx][by] = start_frame
+
+
+# ====================================================================
+#  くる一体分の爆発予測（このクラスの中核）
+#
+#  【処理の流れ】
+#   1. くるがすでに爆発寸前なら即爆発とみなす
+#   2. 壁があるかどうかを実際の Kuru.gd と同じロジックで判定し、
+#      衝突位置と衝突フレームを求める
+#   3. 爆弾専用マップと照合し、くるが移動経路上で被弾するか調べる
+#      被弾した場合は被弾フレーム + 1 を爆発フレーム候補とする
+#   4. 引火がなければ、壁衝突 or 寿命で爆発するタイミングを決定する
+#   5. 最終的な爆発フレームと爆心地 (bomb_x, bomb_y) を返す
+#
+#  【引火判定の詳細】
+#   くるの将来の移動経路を辿り、各区間のマスが爆弾の危険に曝される時間帯と重なるか調べる。
+#   重なっていれば、そのマスに入った瞬間 or 爆風が到達した瞬間のうち遅い方で被弾し、
+#   次のフレームで爆発するとみなす。
+# ====================================================================
+func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
+	if not kuru.has_method("get_data") and not "data" in kuru:
+		return {}
+	var data: Dictionary = kuru.data
+
+	# --- すでに爆発する場合 ---
+	if data["count"] <= 0:
+		var pos = Utility.kuru_bomb_center(data["x"], data["y"], data["muki"])
+		return {"bomb_x": pos.x, "bomb_y": pos.y, "power": data["power"], "explosion_frame": 0}
+
+	# 基本パラメータ
+	var start_x: int = data["x"]
+	var start_y: int = data["y"]
+	var move_muki: int = data["move_muki"]   # 移動方向
+	var muki: int = data["muki"]             # 向き（爆心地計算用）
+	var speed: int = data["speed"]
+	var count: int = data["count"]
+	var power: int = data["power"]
+
+	var natural_lifespan: int = count   # 寿命
+	var move_per_frame: int = speed
+	if move_per_frame == 0:
+		move_per_frame = 1 # 0 はやばいので嘘でもいいから 1 ってことにする（ヘバ対策）
+
+	# ----- 壁衝突の判定（最適化版：マス探索 + 距離 → フレーム計算） -----
+	var collision_x: int = 0
+	var collision_y: int = 0
+	var collision_frame: int = 999999
+	var has_wall: bool = false
+
+	# 移動方向に応じて最初の非歩行マス（ハードブロック or 範囲外）を調べる
+	var first_block_cell: int = -1       # その方向でのマス座標（列または行）
+
+	# 現在のマス座標（中心）
+	var current_cell := Utility.world_to_cell(start_x, start_y)
+	var cur_masu_x: int = current_cell.x
+	var cur_masu_y: int = current_cell.y
+
+	var scan_x: int = cur_masu_x
+	var scan_y: int = cur_masu_y
+
+	match move_muki:
+		Enums.Muki.RIGHT:
+			# 右方向にスキャン（非歩行マス=ハードブロック or 範囲外）
+			while Utility.is_walkable_cell(scan_x + 1, cur_masu_y):
+				scan_x += 1
+			first_block_cell = scan_x + 1
+			has_wall = true
+			if first_block_cell >= Constants.FIELD_COLS:
+				# マップ端（MAP_SIZE_X）を右端とみなす
+				var dist: int = Constants.MAP_SIZE_X - start_x
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = Constants.MAP_SIZE_X
+				collision_y = start_y
+			else:
+				# ハードブロックのマスに入る手前で停止する条件
+				var trigger_x: int = first_block_cell * 320 - 319
+				var dist: int = trigger_x - start_x
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, true)
+				collision_x = first_block_cell * 320 - 320
+				collision_y = start_y
+
+		Enums.Muki.LEFT:
+			while Utility.is_walkable_cell(scan_x - 1, cur_masu_y):
+				scan_x -= 1
+			first_block_cell = scan_x - 1
+			has_wall = true
+			if first_block_cell < 0:
+				var dist: int = start_x
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = 0
+				collision_y = start_y
+			else:
+				var trigger_x: int = (first_block_cell + 1) * 320
+				var dist: int = start_x - trigger_x
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = (first_block_cell + 1) * 320
+				collision_y = start_y
+
+		Enums.Muki.DOWN:
+			while Utility.is_walkable_cell(cur_masu_x, scan_y + 1):
+				scan_y += 1
+			first_block_cell = scan_y + 1
+			has_wall = true
+			if first_block_cell >= Constants.FIELD_ROWS:
+				var dist: int = Constants.MAP_SIZE_Y - start_y
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = start_x
+				collision_y = Constants.MAP_SIZE_Y
+			else:
+				var trigger_y: int = first_block_cell * 320 - 319
+				var dist: int = trigger_y - start_y
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, true)
+				collision_x = start_x
+				collision_y = first_block_cell * 320 - 320
+
+		Enums.Muki.UP:
+			while Utility.is_walkable_cell(cur_masu_x, scan_y - 1):
+				scan_y -= 1
+			first_block_cell = scan_y - 1
+			has_wall = true
+			if first_block_cell < 0:
+				var dist: int = start_y
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = start_x
+				collision_y = 0
+			else:
+				var trigger_y: int = (first_block_cell + 1) * 320
+				var dist: int = start_y - trigger_y
+				collision_frame = Utility.calc_collision_frames(dist, move_per_frame, false)
+				collision_x = start_x
+				collision_y = (first_block_cell + 1) * 320
+
+	# 寿命（natural_lifespan）より先なら壁衝突は無効
+	if has_wall and collision_frame >= natural_lifespan:
+		has_wall = false
+		collision_frame = 999999
+
+	# ----- 爆弾による引火判定 -----
+	var chain_explosion_frame: int = 999999   # 引火爆発までのフレーム（大きい値で初期化）
+	var cur_t: int = 0
+	var cur_x: int = start_x
+	var cur_y: int = start_y
+	var moving: bool = true
+
+	# くるの移動経路を区間に区切って、各マスで爆弾の危険と重ならないか調べる
+	while cur_t < natural_lifespan and moving:
+		# 現在いるマス
+		var cur_cell := Utility.world_to_cell(cur_x, cur_y)
+		var masu_x: int = cur_cell.x
+		var masu_y: int = cur_cell.y
+
+		# 次のセル境界または壁衝突までの時刻 next_t を求める
+		var next_t: int = natural_lifespan
+		if has_wall and collision_frame > cur_t:
+			next_t = mini(next_t, collision_frame)
+
+		if move_muki == Enums.Muki.RIGHT or move_muki == Enums.Muki.LEFT:
+			@warning_ignore("integer_division")
+			var cell = (cur_x + 160) / 320
+			var boundary: int
+			if move_muki == Enums.Muki.RIGHT:
+				boundary = (cell + 1) * 320 - 160
+				if boundary > cur_x:
+					@warning_ignore("integer_division")
+					var t_boundary = cur_t + (boundary - cur_x + move_per_frame - 1) / move_per_frame
+					if t_boundary < next_t:
+						next_t = t_boundary
+			else:
+				boundary = cell * 320 - 160
+				if boundary < cur_x:
+					@warning_ignore("integer_division")
+					var t_boundary = cur_t + (cur_x - boundary + move_per_frame - 1) / move_per_frame
+					if t_boundary < next_t:
+						next_t = t_boundary
+		else:
+			@warning_ignore("integer_division")
+			var cell = (cur_y + 160) / 320
+			var boundary: int
+			if move_muki == Enums.Muki.DOWN:
+				boundary = (cell + 1) * 320 - 160
+				if boundary > cur_y:
+					@warning_ignore("integer_division")
+					var t_boundary = cur_t + (boundary - cur_y + move_per_frame - 1) / move_per_frame
+					if t_boundary < next_t:
+						next_t = t_boundary
+			else:
+				boundary = cell * 320 - 160
+				if boundary < cur_y:
+					@warning_ignore("integer_division")
+					var t_boundary = cur_t + (cur_y - boundary + move_per_frame - 1) / move_per_frame
+					if t_boundary < next_t:
+						next_t = t_boundary
+
+		# この区間内に爆弾の危険があるか調べる
+		var t_enter: int = cur_t          # 区間開始フレーム
+		var t_exit: int = next_t - 1      # 区間終了フレーム（次の境界の直前）
+		if t_enter <= t_exit:
+			if masu_x >= 0 and masu_x < Constants.FIELD_COLS and masu_y >= 0 and masu_y < Constants.FIELD_ROWS:
+				var respite: int = danger_map[masu_x][masu_y]   # そのマスの被弾開始フレーム
+				if respite != 9999:
+					var danger_start: int = respite
+					var danger_end: int = respite + Constants.BOMB_SPREAD_TIME
+					# 区間と危険時間に重なりがあるか
+					if t_enter <= danger_end and t_exit >= danger_start:
+						var hit_frame: int = maxi(t_enter, danger_start)
+						# 被弾したフレーム + 1 で爆発（誘爆は次のフレーム）
+						chain_explosion_frame = mini(chain_explosion_frame, hit_frame + 1)
+
+		cur_t = next_t
+		# 壁に到達したら移動停止
+		if has_wall and cur_t >= collision_frame:
+			moving = false
+			cur_x = collision_x
+			cur_y = collision_y
+		elif moving:
+			# 次の位置を計算（各方向に応じて座標を進める）
+			var elapsed: int = cur_t
+			var d = Utility.dir_to_vec(move_muki)
+			cur_x = start_x + d.x * move_per_frame * elapsed
+			cur_y = start_y + d.y * move_per_frame * elapsed
+
+	# 壁に停止後も、寿命まで同じマスにいるので危険チェック
+	if not moving and has_wall:
+		var stop_cell := Utility.world_to_cell(collision_x, collision_y)
+		var stop_masu_x: int = stop_cell.x
+		var stop_masu_y: int = stop_cell.y
+		var t_stop_start: int = collision_frame
+		var t_stop_end: int = natural_lifespan - 1
+		if t_stop_start <= t_stop_end:
+			if stop_masu_x >= 0 and stop_masu_x < Constants.FIELD_COLS and stop_masu_y >= 0 and stop_masu_y < Constants.FIELD_ROWS:
+				var respite: int = danger_map[stop_masu_x][stop_masu_y]
+				if respite != 9999:
+					var danger_start: int = respite
+					var danger_end: int = respite + Constants.BOMB_SPREAD_TIME
+					if t_stop_start <= danger_end and t_stop_end >= danger_start:
+						var hit_frame: int = maxi(t_stop_start, danger_start)
+						chain_explosion_frame = mini(chain_explosion_frame, hit_frame + 1)
+
+	# ----- 最終的な爆発フレームと位置の決定 -----
+	# デフォルトは寿命で爆発
+	var explosion_frame: int = natural_lifespan
+
+	# 壁衝突時の特殊処理（引火していなければ）
+	if has_wall and chain_explosion_frame > natural_lifespan:
+		var remaining_at_collision: int = natural_lifespan - collision_frame
+		if remaining_at_collision < EARLY_EXPLOSION_THRESHOLD:
+			# 残り寿命が 3 秒未満 → 衝突と同時に即爆発
+			explosion_frame = collision_frame
+		else:
+			# 寿命が長い → 壁に張り付き、残り寿命が 3 秒になった瞬間に爆発
+			explosion_frame = natural_lifespan - EARLY_EXPLOSION_THRESHOLD
+
+	# 引火の方が早ければそれを採用
+	if chain_explosion_frame < explosion_frame:
+		explosion_frame = chain_explosion_frame
+
+	# ----- 爆発位置 (bomb_x, bomb_y) の計算 -----
 	var bomb_x: int
 	var bomb_y: int
-	match muki:
-		Enums.Muki.RIGHT:
-			@warning_ignore("integer_division")
-			bomb_x = (final_x + 319) / 320
-			@warning_ignore("integer_division")
-			bomb_y = (final_y + 160) / 320
-		Enums.Muki.LEFT:
-			@warning_ignore("integer_division")
-			bomb_x = final_x / 320
-			@warning_ignore("integer_division")
-			bomb_y = (final_y + 160) / 320
-		Enums.Muki.DOWN:
-			@warning_ignore("integer_division")
-			bomb_x = (final_x + 160) / 320
-			@warning_ignore("integer_division")
-			bomb_y = (final_y + 319) / 320
-		Enums.Muki.UP:
-			@warning_ignore("integer_division")
-			bomb_x = (final_x + 160) / 320
-			@warning_ignore("integer_division")
-			bomb_y = final_y / 320
-		_:
-			@warning_ignore("integer_division")
-			bomb_x = (final_x + 160) / 320
-			@warning_ignore("integer_division")
-			bomb_y = (final_y + 160) / 320
+	if explosion_frame == 0:
+		# 即時爆発の場合は現在のデータから計算
+		var center = Utility.kuru_bomb_center(data["x"], data["y"], data["muki"])
+		bomb_x = center.x
+		bomb_y = center.y
+	else:
+		# 爆発する瞬間の座標を求める
+		var ex: int
+		var ey: int
+		if (not has_wall) or explosion_frame < collision_frame:
+			# 移動中に爆発するケース
+			var elapsed: int = explosion_frame
+			var dir_vec := Utility.dir_to_vec(move_muki)
+			ex = start_x + dir_vec.x * move_per_frame * elapsed
+			ey = start_y + dir_vec.y * move_per_frame * elapsed
+		else:
+			# 壁で停止後に爆発
+			ex = collision_x
+			ey = collision_y
 
-	return {
-		"pos": Vector2i(
-			clampi(bomb_x, 0, Constants.FIELD_COLS - 1),
-			clampi(bomb_y, 0, Constants.FIELD_ROWS - 1)
-		),
-		"frame": explosion_frame,
-	}
+		# 向き (muki) に応じて爆心地セルを計算（Kuru.gd と同一ロジック）
+		var bomb_center := Utility.kuru_bomb_center(ex, ey, muki)
+		bomb_x = bomb_center.x
+		bomb_y = bomb_center.y
+
+	# フィールド範囲内にクランプ（安全策）
+	bomb_x = clampi(bomb_x, 0, Constants.FIELD_COLS - 1)
+	bomb_y = clampi(bomb_y, 0, Constants.FIELD_ROWS - 1)
+	
+	return {"bomb_x": bomb_x, "bomb_y": bomb_y, "power": power, "explosion_frame": explosion_frame}
 
 
+# ====================================================================
+#  爆発を危険マップに反映する関数群
+# ====================================================================
 
-# ============================================================
-# has_dangerous_kuru_at()
-#
-# マス (x, y) に「爆発まで KURU_DANGER_FRAMES フレーム未満のくる」が
-# 存在するかどうかを返す。
-# そのようなくるに触れると即爆発するため、BFS 経路から除外する。
-#
-# count は 正 → 0（0 で爆発）へカウントダウンする前提。
-#   "残り KURU_DANGER_FRAMES フレーム未満" = count < KURU_DANGER_FRAMES
-# 位置フィールドは masu_x / masu_y を使用する。
-# ============================================================
-func has_dangerous_kuru_at(x: int, y: int, kuru_container: Node) -> bool:
-	if kuru_container == null:
+# くるの爆発を中心と十字方向に展開して危険マップに登録する
+func _register_kuru_explosion(cx: int, cy: int, power: int, explosion_frame: int) -> void:
+	# 範囲外なら何もしない
+	if cx < 0 or cx >= Constants.FIELD_COLS or cy < 0 or cy >= Constants.FIELD_ROWS:
+		return
+	
+	# 中心
+	_register_bomb_at(cx, cy, 0, explosion_frame)
+	# 十字方向（壁で遮られるまで）
+	var dirs: Array = [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	for d in dirs:
+		for i in range(1, power + 1):
+			var nx: int = cx + d.x * i
+			var ny: int = cy + d.y * i
+			if nx < 0 or nx >= Constants.FIELD_COLS or ny < 0 or ny >= Constants.FIELD_ROWS:
+				break
+			if !Utility.is_walkable_cell(nx, ny):
+				break
+			_register_bomb_at(nx, ny, i, explosion_frame)
+
+# 単一の爆風マスを危険マップに記録する
+func _register_bomb_at(mx: int, my: int, distance: int, base_frame: int) -> void:
+	# 爆発中心からの距離に応じて爆風到達が遅れる (BOMB_SPREAD_TIME ごとに 1 マス拡大)
+	var start_frame: int = base_frame + (2 + distance) * Constants.BOMB_SPREAD_TIME
+	if start_frame < _danger_map[mx][my]:
+		_danger_map[mx][my] = start_frame
+
+
+# ====================================================================
+#  危険度マップの問い合わせ（COM の意思決定で使用）
+# ====================================================================
+
+# そのマスが「危険」（近い将来被弾する）かどうか
+func is_cell_danger(x: int, y: int) -> bool:
+	if x < 0 or x >= Constants.FIELD_COLS or y < 0 or y >= Constants.FIELD_ROWS:
 		return false
-	for kuru_node in kuru_container.get_children():
-		var kd: Dictionary = kuru_node.data
-		var kx: int = int(kd.get("masu_x", -9999))
-		var ky: int = int(kd.get("masu_y", -9999))
-		if kx != x or ky != y:
-			continue
-		# count が KURU_DANGER_FRAMES 未満 = 爆発まで残り 180 フレーム以内
-		# デフォルト値を閾値以上にしてフィールドなし時は安全扱い
-		var cnt: int = int(kd.get("count", KURU_DANGER_FRAMES))
-		if cnt < KURU_DANGER_FRAMES:
-			return true
-	return false
-
-
-
-# ============================================================
-# ── くる・連鎖対応の拡張爆発マップ ─────────────────────────────
-#
-# 以下の 3 関数を組み合わせて使う。
-#
-#   build_event_list()         : 爆弾 + くるを「爆発イベント」リストに変換し、
-#                                引火連鎖を解決して返す
-#   _propagate_chains()        : イベント間の引火を伝播させる内部処理
-#   hit_frame_from_events()    : イベントリストから任意マスの被弾フレームを取得
-#
-# BFS ループ内では build_event_list() を1回だけ呼び、
-# hit_frame_from_events() を各マスへの問い合わせに使うことで効率化する。
-# ============================================================
-
-
-# ============================================================
-# build_event_list()
-#
-# 爆弾・くるの全爆発イベントを構築し、引火連鎖を解決した結果を返す。
-#
-# 各イベント（Dictionary）:
-#   "x", "y"       : 爆発中心マス（bomb_x / bomb_y 相当）
-#   "power"        : 爆風射程
-#   "center_frame" : 今から何フレーム後に中心マスが爆風に巻き込まれるか（0 = 今）
-#
-# ■ くるの爆発位置・タイミング
-#   _predict_kuru_explosion() で位置と実際の爆発フレームを取得する。
-#   壁衝突による早期爆発（count > 3*KURU_DANKAI_TIME の壁到達後に
-#   残りカウントが 3*KURU_DANKAI_TIME 以下になる場合）も正確に反映する。
-# ============================================================
-func build_event_list(bomb_container: Node, kuru_container: Node) -> Array:
-	var events: Array = []
-	var bst: int = Constants.BOMB_SPREAD_TIME
-
-	# ── 爆弾を追加 ──────────────────────────────────────────────────────────
-	# 爆弾の count (t) と center_frame の対応:
-	#   t < 0      : まだ爆発していない。center_frame = -t（t フレーム後に爆発）
-	#   t ∈ [0,bst]: 中心が爆発中。center_frame = 0（今すでに当たっている）
-	#   それ以外の有効範囲 : 拡散爆風が進行中。center は既に 0 なので center_frame = 0
-	for bomb in bomb_container.get_children():
-		var bd: Dictionary = bomb.data
-		var t: int  = int(bd["count"])
-		var pw: int = int(bd["power"])
-		if t < -bst * 2 or t > (pw + 1) * bst:
-			continue
-		# ■ center_frame の符号の意味
-		#   t < 0 (未爆発):  center_frame = -t > 0 → あと -t フレームで中心着火
-		#   t >= 0 (展開中): center_frame = -t <= 0 → |t| フレーム前に中心が着火済み
-		# hit_frame_from_events() は maxi(0, center_frame + d * bst) で正しく計算する。
-		events.append({
-			"x":            int(bd["masu_x"]),
-			"y":            int(bd["masu_y"]),
-			"power":        pw,
-			"center_frame": -t
-		})
-
-	# ── くるを追加（壁衝突早期爆発を含む実際の爆発フレームを使用） ──────────
-	# _predict_kuru_explosion() が壁到達判定を行い、早期爆発する場合は
-	# frames_to_wall を "frame" として返す。これを center_frame に使うことで
-	# 危険度マップが正確になる。
-	if kuru_container != null:
-		for kuru_node in kuru_container.get_children():
-			var kd: Dictionary = kuru_node.data
-			var c:  int = int(kd.get("count", SAFE_INF))
-			if c <= 0 or c >= SAFE_INF:
-				continue
-			var kp:       int        = int(kd.get("power", 2))
-			var explosion: Dictionary = _predict_kuru_explosion(kd)
-			events.append({
-				"x":            explosion["pos"].x,
-				"y":            explosion["pos"].y,
-				"power":        kp,
-				"center_frame": explosion["frame"],  # 壁早期爆発を反映した実際のフレーム
-			})
-
-	# ── 引火連鎖の解決 ──────────────────────────────────────────────────────
-	_propagate_chains(events)
-
-	return events
-
-
-# ============================================================
-# _propagate_chains()
-#
-# 爆発イベントリストに引火連鎖（chain explosion）を反映させる。
-#
-# ■ 判定ルール
-#   爆発 A の爆風が爆発 B の中心に届く場合（同行 or 同列かつ距離 ≤ A.power）、
-#   B の center_frame を min(B.center_frame, A.center_frame + dist * BST) に更新する。
-#
-# ■ 収束保証
-#   center_frame は単調減少しかしないため、最大でも爆発数回の反復で収束する。
-#   無限ループ防止のため上限を 20 回に設定。
-# ============================================================
-func _propagate_chains(events: Array) -> void:
-	var bst:      int = Constants.BOMB_SPREAD_TIME
-	var max_iter: int = 20
-	for _iter in range(max_iter):
-		var changed: bool = false
-		for i in range(events.size()):
-			var a: Dictionary = events[i]
-			var ax: int = a["x"]
-			var ay: int = a["y"]
-			var ap: int = a["power"]
-			var af: int = a["center_frame"]
-			for j in range(events.size()):
-				if i == j:
-					continue
-				var b: Dictionary = events[j]
-				var bx: int = b["x"]
-				var by: int = b["y"]
-				# 同行 or 同列かつ射程内か確認
-				var dist: int = -1
-				if ax == bx and ay != by:
-					dist = abs(ay - by)
-				elif ay == by and ax != bx:
-					dist = abs(ax - bx)
-				if dist < 0 or dist > ap:
-					continue
-				if _is_blast_blocked(ax, ay, bx, by):
-					continue
-				# A の爆風が B の中心に届くフレーム
-				var chain_frame: int = af + dist * bst
-				if chain_frame < b["center_frame"]:
-					b["center_frame"] = chain_frame
-					events[j]         = b
-					changed           = true
-		if not changed:
-			break
-
-
-# ============================================================
-# hit_frame_from_events()
-#
-# 事前構築済みイベントリストから、マス (x, y) が最初に
-# 爆風に巻き込まれるまでのフレーム数を返す。
-# いずれの爆発も届かない場合は SAFE_INF を返す。
-#
-# BFS ループ内で繰り返し呼ぶ用途のため、イベント構築コストは含まない。
-#
-# ■ 爆風ウィンドウモデル（修正）
-#   爆風は中心から外向きに伝播し、距離 d のリングは
-#   爆発開始から [d*bst, (d+1)*bst) フレームの間だけ当たり判定を持つ。
-#   内側のリングは外側より先に当たり判定が消滅する。
-#
-#   ef = center_frame（負なら爆発開始から |ef| フレーム経過）
-#   距離 d のリングが現在・将来に有効かどうかの条件:
-#     ef + (d+1)*bst > 0  ← 偽なら爆風はすでにこの距離を通過済み → 無効
-#   有効な場合の被弾フレーム:
-#     maxi(0, ef + d*bst)
-# ============================================================
-func hit_frame_from_events(x: int, y: int, events: Array) -> int:
-	var bst:      int = Constants.BOMB_SPREAD_TIME
-	var earliest: int = SAFE_INF
-	for e in events:
-		var ex: int = e["x"]
-		var ey: int = e["y"]
-		var ep: int = e["power"]
-		var ef: int = e["center_frame"]
-		# ef < 0: 爆弾がすでに |ef| フレーム前に爆発開始済み（展開中）
-		# ef >= 0: あと ef フレームで中心着火（またはくるの残りカウント）
-
-		# ── 中心マス（距離 0）──
-		# 中心リングのウィンドウは [0, bst)。
-		# ef + bst <= 0 なら中心爆風はすでに通過済み → このイベントは無効
-		if x == ex and y == ey:
-			if ef + bst > 0:
-				earliest = mini(earliest, maxi(0, ef))
-			continue
-
-		# ── 拡散爆風（距離 d マス）──
-		# 距離 d のリングは [d*bst, (d+1)*bst) の間だけ当たり判定あり。
-		# ef + (d+1)*bst <= 0 なら爆風波面はすでに距離 d を通過済み → 無効
-		if x == ex:
-			var d: int = abs(y - ey)
-			if d <= ep and not _is_blast_blocked(ex, ey, x, y):
-				if ef + (d + 1) * bst > 0:
-					earliest = mini(earliest, maxi(0, ef + d * bst))
-		elif y == ey:
-			var d: int = abs(x - ex)
-			if d <= ep and not _is_blast_blocked(ex, ey, x, y):
-				if ef + (d + 1) * bst > 0:
-					earliest = mini(earliest, maxi(0, ef + d * bst))
-	return earliest
-
-
-# ============================================================
-# find_bomb_danger()
-#
-# マス (x, y) が「今すぐ逃げるべき危険」にあるかを判定する。
-# 戻り値: { "danger": bool, "x": int, "y": int }
-#
-# ■ 判定対象と基準
-#   爆弾    : 有効爆発範囲内にいる。ただし爆発展開中（t > 0）の場合は
-#             爆風波面がすでにそのマスを通過済みなら除外する。
-#   くる    : 実際の爆発フレーム（壁衝突による早期爆発を含む）が
-#             KURU_IMMDANGER_FRAMES 以内 かつ 爆発予測位置の爆風範囲内
-#             → 遠い将来のくるは BFS（hit_frame_from_events）に任せ、
-#               即時危険とはみなさない。攻撃積極性を損なわないための閾値。
-#   物理接触: 残りカウントが KURU_DANGER_FRAMES 未満のくるが現在地にいる
-#
-# ■ 爆風波面の通過チェック（修正）
-#   爆発展開中の爆弾（t > 0）について、距離 d のマスが危険なのは
-#   [d*bst, (d+1)*bst) の間だけ。t >= (d+1)*bst ならすでに通過済み → 除外。
-# ============================================================
-func find_bomb_danger(x: int, y: int, bomb_container: Node, kuru_container: Node) -> Dictionary:
-	var bst: int = Constants.BOMB_SPREAD_TIME
-	# ── 爆弾の直接射程判定 ──────────────────────────────────────────────────
-	for bomb in bomb_container.get_children():
-		var bd: Dictionary = bomb.data
-		var t: int  = int(bd["count"])
-		var pw: int = int(bd["power"])
-		if t < -bst * 2 or t > Constants.BOMB_STAY_TIME + pw * bst:
-			continue
-		var bx: int = int(bd["masu_x"])
-		var by: int = int(bd["masu_y"])
-
-		# 同行または同列かつ射程内かを確認し、距離 d を求める
-		var d: int = -1
-		if x == bx:
-			d = abs(y - by)
-		elif y == by:
-			d = abs(x - bx)
-		if d < 0 or d > pw:
-			continue
-		if _is_blast_blocked(bx, by, x, y):
-			continue
-
-		# ■ 爆発展開中（t > 0）かつ爆風波面がすでにこの距離を通過済みなら除外
-		# 距離 d のリングは [d*bst, (d+1)*bst) の間だけ有効。
-		# t >= (d+1)*bst → 波面通過済み → 当たり判定なし
-		if t > 0 and t >= (d + 1) * bst:
-			continue
-
-		return {"danger": true, "x": bd["masu_x"], "y": bd["masu_y"]}
-
-	# ── くるの爆発射程判定（実際の爆発フレーム × 閾値フレーム以内のみ） ──────
-	# 壁衝突による早期爆発がある場合は explosion["frame"] が frames_to_wall になる。
-	# これにより count が KURU_IMMDANGER_FRAMES 以上でも、壁到達で実際には
-	# 近いうちに爆発するくるを正しく即時危険として検出できる。
-	if kuru_container != null:
-		for kuru_node in kuru_container.get_children():
-			var kd: Dictionary = kuru_node.data
-			var c:  int = int(kd.get("count", SAFE_INF))
-			if c <= 0:
-				continue
-			var explosion:     Dictionary = _predict_kuru_explosion(kd)
-			var actual_frame:  int        = explosion["frame"]
-			# 実際の爆発フレームで閾値判定（壁早期爆発を含む）
-			if actual_frame <= 0 or actual_frame >= KURU_IMMDANGER_FRAMES:
-				continue  # 爆発まで余裕あり → 即時危険扱いしない
-			var pos: Vector2i = explosion["pos"]
-			var kp:  int      = int(kd.get("power", 2))
-			var in_kuru_range: bool = (
-				(x == pos.x and abs(y - pos.y) <= kp) \
-				or (y == pos.y and abs(x - pos.x) <= kp)
-			)
-			if in_kuru_range and not _is_blast_blocked(pos.x, pos.y, x, y):
-				return {"danger": true, "x": pos.x, "y": pos.y}
-
-	# ── 危険なくるの物理接触判定 ────────────────────────────────────────────
-	if has_dangerous_kuru_at(x, y, kuru_container):
-		return {"danger": true, "x": x, "y": y}
-
-	return {"danger": false, "x": -1, "y": -1}
-
-
-# ============================================================
-# bomb_danger_score()
-#
-# マス (x, y) の爆弾危険度スコアを返す。
-#   -100 : 爆発範囲内（進入禁止）
-#   20   : 爆弾なし（安全）
-#   1〜  : 爆弾と同行列だが射程外（値が大きいほど安全）
-#
-# ■ 爆風波面の通過チェック（修正）
-#   爆発展開中の爆弾（t > 0）について、距離 d のマスが -100 になるのは
-#   [d*bst, (d+1)*bst) の間だけ。t >= (d+1)*bst ならすでに通過済みなので
-#   -100 を返さない（同行・同列の近傍スコアとして min_dist だけ更新）。
-# ============================================================
-func bomb_danger_score(x: int, y: int, bomb_container: Node) -> int:
-	var bst: int = Constants.BOMB_SPREAD_TIME
-	var min_dist := 999
-	for bomb in bomb_container.get_children():
-		var bd: Dictionary = bomb.data
-		var t: int  = int(bd["count"])
-		var pw: int = int(bd["power"])
-		if t < -bst * 2 or t > (pw + 1) * bst:
-			continue
-		var bx: int = int(bd["masu_x"])
-		var by: int = int(bd["masu_y"])
-		if x == bx:
-			var d: int = abs(y - by)
-			if d <= pw and not _is_blast_blocked(bx, by, x, y):
-				# 爆発展開中かつ爆風波面がすでにこの距離を通過済みなら -100 にしない
-				if t > 0 and t >= (d + 1) * bst:
-					min_dist = mini(min_dist, d)
-				else:
-					return -100
-			min_dist = mini(min_dist, abs(y - by))
-		elif y == by:
-			var d: int = abs(x - bx)
-			if d <= pw and not _is_blast_blocked(bx, by, x, y):
-				if t > 0 and t >= (d + 1) * bst:
-					min_dist = mini(min_dist, d)
-				else:
-					return -100
-			min_dist = mini(min_dist, abs(x - bx))
-	if min_dist == 999:
-		return 20
-	return min_dist
-
-
-func _is_blast_blocked(from_x: int, from_y: int, to_x: int, to_y: int) -> bool:
-	if from_x != to_x and from_y != to_y:
-		return true
-	var step_x: int = sign(to_x - from_x)
-	var step_y: int = sign(to_y - from_y)
-	var x: int = from_x + step_x
-	var y: int = from_y + step_y
-	while x != to_x or y != to_y:
-		if _is_hard_block(x, y):
-			return true
-		x += step_x
-		y += step_y
-	return false
-
-
-func _is_hard_block(x: int, y: int) -> bool:
-	var masu: Array = GameState.masu
-	if masu.size() <= y or masu[y].size() <= x:
+	return _danger_map[x][y] <= DANGER_FRAME_THRESHOLD
+	
+# そのマスが「永続安全」（当たり判定の発生の予定なし）かどうか
+func is_cell_eternally_safe(x: int, y: int) -> bool:
+	if x < 0 or x >= Constants.FIELD_COLS or y < 0 or y >= Constants.FIELD_ROWS:
 		return false
-	return masu[y][x].kind != Enums.MasuKind.BROKEN
+	return _danger_map[x][y] >= 9999
+	
+# 指定マスの被弾開始フレームを返す（安全なら 9999）
+func hit_frame_from_events(x: int, y: int) -> int:
+	if x < 0 or x >= Constants.FIELD_COLS or y < 0 or y >= Constants.FIELD_ROWS:
+		return 9999
+	return _danger_map[x][y]
+
+# デバッグオーバーレイ用に危険度マップのコピーを返す
+func get_danger_grid() -> Array:
+	var copy: Array = []
+	for x in range(Constants.FIELD_COLS):
+		var col: Array = []
+		col.assign(_danger_map[x].duplicate())
+		copy.append(col)
+	return copy

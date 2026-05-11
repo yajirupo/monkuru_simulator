@@ -1,0 +1,11 @@
+{
+  "name": "ポイ",
+  "speed": 0,
+  "dankai": 4,
+  "kankaku": 0,
+  "speed_up": 0,
+  "shot_up": 0,
+  "power_up": 2,
+  "sheet_path": "res://assets/images/kuru/cm_kuru020.png",
+  "draw_offset_x": 18.5
+}

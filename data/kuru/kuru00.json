@@ -1,0 +1,11 @@
+{
+  "name": "基本くる",
+  "speed": 0,
+  "dankai": 5,
+  "kankaku": 12,
+  "speed_up": 0,
+  "shot_up": 0,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru000.png",
+  "draw_offset_x": 18.0
+}

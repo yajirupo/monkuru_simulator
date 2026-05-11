@@ -69,7 +69,7 @@ func refresh_hard_blocks() -> void:
 
 	for y in range(Constants.FIELD_ROWS):
 		for x in range(Constants.FIELD_COLS):
-			if GameState.masu[y][x]["kind"] != Enums.MasuKind.HARD_BLOCK:
+			if GameState.masu[x][y]["kind"] != Enums.MasuKind.HARD_BLOCK:
 				continue
 			var hard_block = HARD_BLOCK_SCENE.instantiate()
 			if hard_block and hard_block.has_method("init_hard_block"):

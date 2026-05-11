@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://b6toj6h0htbs8" path="res://scenes/Main/Main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Field/Field.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/Player/Player.tscn" id="3"]
-[ext_resource type="Script" uid="uid://c7iwjv7124jdn" path="res://scenes/Main/ComDebugOverlay.gd" id="4_brr1f"]
+[ext_resource type="Script" uid="uid://bprymq82wga4d" path="res://scenes/Main/ComDebugOverlay.gd" id="4_brr1f"]
 
 [node name="Main" type="Node2D" unique_id=1304751546]
 script = ExtResource("1")
@@ -41,6 +41,22 @@ theme_override_constants/margin_bottom = 6
 [node name="ChatLineEdit" type="LineEdit" parent="ChatInputLayer/ChatInputPanel/MarginContainer" unique_id=1888001004]
 layout_mode = 2
 placeholder_text = "メッセージを入力して Enter で送信"
+max_length = 200
 
-[node name="ComDebugOverlay" type="CanvasLayer" parent="." unique_id=1851331226]
+[node name="GameHintLayer" type="CanvasLayer" parent="." unique_id=1888001010]
+
+[node name="EscHintLabel" type="Label" parent="GameHintLayer" unique_id=1888001011]
+visible = false
+offset_left = 492.0
+offset_top = 2.0
+offset_right = 634.0
+offset_bottom = 31.0
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 13
+text = "Esc: メニューに戻る"
+horizontal_alignment = 2
+
+[node name="ComDebugOverlay" type="Control" parent="." unique_id=1851331226]
+layout_mode = 3
+anchors_preset = 0
 script = ExtResource("4_brr1f")

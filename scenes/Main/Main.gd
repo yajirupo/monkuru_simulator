@@ -13,7 +13,8 @@ extends Node2D
 @onready var kuru_container: Node2D           = $KuruContainer
 @onready var bomb_container: Node2D           = $BombContainer
 @onready var hard_block_container: Node2D      = $HardBlockContainer
-@onready var dbg:            CanvasLayer = $ComDebugOverlay
+@onready var dbg:            Control = $ComDebugOverlay
+@onready var esc_hint_lbl:   Label = $GameHintLayer/EscHintLabel
 
 # UI シーン参照（add_child で切り替え）
 var _current_ui: Node = null
@@ -50,6 +51,8 @@ var _chat_mgr:     ChatInputManager # チャット UI・入力管理
 var _game_obj_mgr: GameObjectManager# くる・爆弾・描画順管理
 var _online_loop:  OnlineGameLoop   # オンラインロックステップ
 
+var _was_f12_pressed: bool = false
+
 # ============================================================
 # 起動処理
 # ============================================================
@@ -76,6 +79,7 @@ func _ready() -> void:
 
 	# ヘルパー初期化
 	_com_think    = ComThinkRoutine.new()
+	_com_think.setup(GameState.masu)
 
 	_chat_mgr     = ChatInputManager.new()
 	_chat_mgr.build_ui(self)
@@ -114,12 +118,19 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	KeyInput.update_keys()
 
+	# F12 でデバッグオーバーレイ表示切替
+	var f12_pressed: bool = Input.is_key_pressed(KEY_F12)
+	if f12_pressed and not _was_f12_pressed:
+		dbg.visible = not dbg.visible
+	_was_f12_pressed = f12_pressed
+
 	var jf := GameState.joutai_flag
 
 	# 状態遷移があったら UI・BGM を切り替える
 	if jf != _prev_joutai:
 		_switch_ui(jf)
 		_update_bgm_for_state(jf)
+		_update_visibility(jf)
 		_prev_joutai = jf
 
 	# ゲームロジック（状態別）
@@ -196,6 +207,8 @@ func _process(_delta: float) -> void:
 			player_1p.player_calc()
 			_game_obj_mgr.calc_kuru()
 			_game_obj_mgr.calc_bomb()
+			if not GameState.player[0]["life_flag"] or not GameState.player[1]["life_flag"]:
+				_com_think.cancel_rush()
 			VsComReplayManager.vs_com_key_to_replay()
 			field.field_disp()
 			if KeyInput.key[KeyInput.KEY_INPUT_ESCAPE] == 1:
@@ -273,28 +286,7 @@ func _process(_delta: float) -> void:
 
 	GameState.count += 1
 
-	# プレイヤー表示切り替え
-	var current_jf := GameState.joutai_flag
-	var in_game := current_jf in [
-		Enums.JoutaiType.SINGLE_GAME,  Enums.JoutaiType.SINGLE_REPLAY,
-		Enums.JoutaiType.VS_GAME,      Enums.JoutaiType.VS_REPLAY,
-		Enums.JoutaiType.VS_COM_REPLAY,
-		Enums.JoutaiType.VS_COM_GAME,
-		Enums.JoutaiType.ONLINE_GAME,
-		Enums.JoutaiType.ONLINE_REPLAY,
-	]
-	if player_1p:
-		player_1p.visible = in_game
-	if player_2p:
-		player_2p.visible = in_game and current_jf in [
-			Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_REPLAY, Enums.JoutaiType.VS_COM_REPLAY,
-			Enums.JoutaiType.VS_COM_GAME,
-			Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY,
-		]
-	if hard_block_container:
-		hard_block_container.visible = in_game
-	if in_game:
-		_game_obj_mgr.update_draw_order()
+	_update_visibility(GameState.joutai_flag)
 
 
 # ============================================================
@@ -320,6 +312,8 @@ func start_game() -> void:
 			GameState.player.append(GameData.make_player_data())
 		GameState.current_stage = _selected_stage_for_current_mode()
 	GameInit.ini_game(self)
+	if GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME:
+		_com_think.reset_for_new_game()
 	_game_obj_mgr.refresh_hard_blocks()
 	player_1p.ini_player()
 	if GameState.joutai_flag in [
@@ -367,24 +361,7 @@ func _switch_ui(jf: int) -> void:
 				_current_ui = scene.instantiate()
 				add_child(_current_ui)
 
-	# フィールド・プレイヤー表示切り替え
-	var in_game := jf in [
-		Enums.JoutaiType.SINGLE_GAME,  Enums.JoutaiType.SINGLE_REPLAY,
-		Enums.JoutaiType.VS_GAME,      Enums.JoutaiType.VS_REPLAY,
-		Enums.JoutaiType.VS_COM_REPLAY,
-		Enums.JoutaiType.VS_COM_GAME,
-		Enums.JoutaiType.ONLINE_GAME,  Enums.JoutaiType.ONLINE_REPLAY,
-	]
-	if field:     field.visible     = in_game
-	if player_1p: player_1p.visible = in_game
-	if player_2p:
-		player_2p.visible = in_game and jf in [
-			Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_REPLAY, Enums.JoutaiType.VS_COM_REPLAY,
-			Enums.JoutaiType.VS_COM_GAME,
-			Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY,
-		]
-	if hard_block_container:
-		hard_block_container.visible = in_game
+	_update_visibility(jf)
 
 	# ゲーム開始トリガー
 	if jf in [
@@ -407,6 +384,39 @@ func _update_bgm_for_state(jf: int) -> void:
 		SoundManager.play_bgm_track("res://assets/bgm/stage%d.ogg" % stage, true)
 	else:
 		SoundManager.play_bgm_track("res://assets/bgm/lobby.ogg", true)
+
+
+func _update_visibility(jf: int) -> void:
+	var in_game := _is_in_game_display_state(jf)
+	if field:
+		field.visible = in_game
+	if hard_block_container:
+		hard_block_container.visible = in_game
+	if player_1p:
+		player_1p.visible = in_game
+	if player_2p:
+		player_2p.visible = in_game and _is_2p_active_state(jf)
+	if esc_hint_lbl:
+		esc_hint_lbl.visible = in_game
+	if in_game:
+		_game_obj_mgr.update_draw_order()
+
+
+func _is_in_game_display_state(jf: int) -> bool:
+	return jf in [
+		Enums.JoutaiType.SINGLE_GAME, Enums.JoutaiType.SINGLE_REPLAY,
+		Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_REPLAY,
+		Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY,
+		Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY,
+	]
+
+
+func _is_2p_active_state(jf: int) -> bool:
+	return jf in [
+		Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_REPLAY,
+		Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY,
+		Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY,
+	]
 
 
 func _is_gameplay_state(jf: int) -> bool:

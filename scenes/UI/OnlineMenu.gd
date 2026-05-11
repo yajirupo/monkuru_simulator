@@ -56,6 +56,12 @@ func _ensure_online_menu_defaults() -> void:
 		GameState.online_menu["name"] = "Player"
 	elif typeof(GameState.online_menu["name"]) != TYPE_STRING:
 		GameState.online_menu["name"] = str(GameState.online_menu["name"])
+	GameState.online_menu["name"] = GameState.sanitize_chat_text(
+		String(GameState.online_menu["name"]),
+		GameState.CHAT_MAX_NAME_LENGTH
+	)
+	if GameState.online_menu["name"] == "":
+		GameState.online_menu["name"] = "Player"
 	if not GameState.online_menu.has("ip_address"):
 		GameState.online_menu["ip_address"] = "127.0.0.1"
 	elif typeof(GameState.online_menu["ip_address"]) != TYPE_STRING:
@@ -113,6 +119,7 @@ func _build_main_panel(root: Control) -> void:
 	name_row.add_child(_name_btn)
 	_name_edit = LineEdit.new()
 	_name_edit.custom_minimum_size.x = 120
+	_name_edit.max_length = GameState.CHAT_MAX_NAME_LENGTH
 	_name_edit.visible = false
 	_name_edit.text_submitted.connect(_on_name_submitted)
 	name_row.add_child(_name_edit)
@@ -149,11 +156,7 @@ func _build_main_panel(root: Control) -> void:
 		func(): return Constants.get_kuru_name(GameState.online_menu["kuru_type"]),
 		func(): GameState.online_menu["kuru_type"] = wrapi(GameState.online_menu["kuru_type"] - 1, 0, Constants.get_kuru_count()),
 		func(): GameState.online_menu["kuru_type"] = wrapi(GameState.online_menu["kuru_type"] + 1, 0, Constants.get_kuru_count()))
-	_arrow_row(_main_panel, "ステージ",
-		func(): return GameState.get_stage_name(GameState.online_menu["stage"]),
-		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] - 1, 0, GameState.STAGE_COUNT),
-		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] + 1, 0, GameState.STAGE_COUNT))
-
+	
 	_char_status_lbl = Label.new()
 	_char_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_main_panel.add_child(_char_status_lbl)
@@ -163,7 +166,7 @@ func _build_main_panel(root: Control) -> void:
 			st["speed_base"], Constants.format_signed_bonus(st["speed_bonus"]),
 			st["power_base"], Constants.format_signed_bonus(st["power_bonus"]),
 			st["shot_base"],  Constants.format_signed_bonus(st["shot_bonus"]),
-			st["kuru_speed"], st["kuru_dankai"], st["kuru_kankaku"] / 60.0
+			st["kuru_speed_stat"], st["kuru_dankai"], st["kuru_kankaku"] / 60.0
 		])
 
 	# ── アイテム ─────────────────────────────────────────────
@@ -182,6 +185,10 @@ func _build_main_panel(root: Control) -> void:
 				var cur: int = GameState.online_menu["item_type"][slot]
 				GameState.online_menu["item_type"][slot] = wrapi(cur + 1, 0, ITEM_MAX))
 
+	_arrow_row(_main_panel, "ステージ",
+		func(): return GameState.get_stage_name(GameState.online_menu["stage"]),
+		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] - 1, 0, GameState.STAGE_COUNT),
+		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] + 1, 0, GameState.STAGE_COUNT))
 
 	_main_panel.add_child(HSeparator.new())
 	var replay_row := HBoxContainer.new()
@@ -279,7 +286,7 @@ func _on_name_btn_pressed() -> void:
 	_name_edit.select_all()
 
 func _on_name_submitted(new_name: String) -> void:
-	var t := new_name.strip_edges()
+	var t := GameState.sanitize_chat_text(new_name, GameState.CHAT_MAX_NAME_LENGTH)
 	if t != "":
 		GameState.online_menu["name"] = t
 	_name_btn.text     = GameState.online_menu.get("name", "Player") as String

@@ -72,10 +72,12 @@ func copy_menu(src: Dictionary) -> Dictionary:
 	return src.duplicate(true)
 
 func make_player_data() -> Dictionary:
+	@warning_ignore("integer_division")
+	var spd: int = Constants.PLAYER_DEFAULT_SPEED / 2
 	return {
 		"masu_x": 0, "masu_y": 0,
 		"x": 0, "y": 0,
-		"speed": Constants.PLAYER_DEFAULT_SPEED,
+		"speed": spd,
 		"muki": Enums.Muki.DOWN,
 		"item_speed": Constants.PLAYER_DEFAULT_ITEM_SPEED,
 		"item_shot":  Constants.PLAYER_DEFAULT_ITEM_SHOT,
@@ -84,7 +86,7 @@ func make_player_data() -> Dictionary:
 		"max_shot":   Constants.PLAYER_DEFAULT_ITEM_SHOT,
 		"max_power":  Constants.PLAYER_DEFAULT_ITEM_POWER,
 		"shot_count": 0, "shot_kuru": 0,
-		"kuru_speed": 0, "kuru_dankai": 5, "kuru_kankaku": 12,
+		"kuru_speed": Constants.kuru_speed_stat_to_move_speed(0), "kuru_dankai": 5, "kuru_kankaku": 12,
 		"life_flag": true,
 		"kuru_type": Enums.KuruType.KIHON,
 		"cr_item": [Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
@@ -100,10 +102,3 @@ func active_vs_menu() -> Dictionary:
 	if GameState.joutai_flag in [Enums.JoutaiType.VS_COM_MENU, Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY]:
 		return vs_com_menu
 	return vs_menu
-
-func active_vs_menu_tmp() -> Dictionary:
-	if GameState.joutai_flag in [Enums.JoutaiType.VS_COM_MENU, Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY]:
-		return vs_com_menu_tmp
-	if GameState.vs_replay_return_state == Enums.JoutaiType.VS_COM_MENU:
-		return vs_com_menu_tmp
-	return vs_menu_tmp

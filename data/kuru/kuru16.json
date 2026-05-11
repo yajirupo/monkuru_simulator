@@ -1,0 +1,11 @@
+{
+  "name": "ディバー",
+  "speed": -1,
+  "dankai": 4,
+  "kankaku": 18,
+  "speed_up": 0,
+  "shot_up": 1,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru017.png",
+  "draw_offset_x": 17.0
+}

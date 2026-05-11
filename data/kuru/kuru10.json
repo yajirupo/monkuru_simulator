@@ -1,0 +1,11 @@
+{
+  "name": "シネ",
+  "speed": 3,
+  "dankai": 4,
+  "kankaku": 24,
+  "speed_up": 1,
+  "shot_up": 0,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru008.png",
+  "draw_offset_x": 22.0
+}

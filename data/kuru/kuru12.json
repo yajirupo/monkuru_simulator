@@ -1,0 +1,11 @@
+{
+  "name": "ヨラン",
+  "speed": 0,
+  "dankai": 5,
+  "kankaku": 18,
+  "speed_up": 0,
+  "shot_up": 1,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru009.png",
+  "draw_offset_x": 15.0
+}

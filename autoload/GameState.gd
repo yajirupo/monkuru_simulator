@@ -27,7 +27,6 @@ const STAGE_FILES: Array[String] = [
 	"res://data/maps/map3.json",
 ]
 static var STAGE_COUNT: int = STAGE_FILES.size()
-const MAP_CELL_EMPTY: int = 0
 const MAP_CELL_HARD_BLOCK: int = 30
 const MAP_CELL_PLAYER0_START: int = 40
 const MAP_CELL_PLAYER1_START: int = 41
@@ -37,7 +36,7 @@ var _stage_defs: Array[Dictionary] = []
 
 # ============================================================
 # フィールド（マス配列）
-# masu[row][col]、FIELD_ROWS=12、FIELD_COLS=18
+# masu[x][y]、FIELD_COLS=18、FIELD_ROWS=12
 # 各要素は辞書: {"kind": Enums.MasuKind}
 # ============================================================
 var masu: Array = []
@@ -48,11 +47,11 @@ func _ready() -> void:
 
 func _init_masu() -> void:
 	masu.clear()
-	for row in range(Constants.FIELD_ROWS):
-		var row_arr: Array = []
-		for col in range(Constants.FIELD_COLS):
-			row_arr.append({"kind": Enums.MasuKind.BROKEN})
-		masu.append(row_arr)
+	for x in range(Constants.FIELD_COLS):
+		var col_arr: Array = []
+		for y in range(Constants.FIELD_ROWS):
+			col_arr.append({"kind": Enums.MasuKind.BROKEN})
+		masu.append(col_arr)
 
 
 # ============================================================
@@ -61,6 +60,19 @@ func _init_masu() -> void:
 # struct_t の移植は PlayerData リソースを使用
 # ============================================================
 var player: Array = []   # PlayerData x MAX_PLAYER
+
+
+# ============================================================
+# チャット安全化
+# ============================================================
+const CHAT_MAX_NAME_LENGTH := 24
+const CHAT_MAX_MESSAGE_LENGTH := 200
+
+func sanitize_chat_text(text: String, max_length: int) -> String:
+	var clean := text.replace("\r", " ").replace("\n", " ").replace("\t", " ").strip_edges()
+	if clean.length() > max_length:
+		clean = clean.substr(0, max_length)
+	return clean
 
 
 # ============================================================
@@ -224,7 +236,7 @@ func remember_last_single_game_replay() -> void:
 		"speed": p["max_speed"],
 		"shot": p["max_shot"],
 		"power": p["max_power"],
-		"kuru_speed": p["kuru_speed"],
+		"kuru_speed": replay_menu_src["kuru_speed"],
 		"kuru_dankai": p["kuru_dankai"],
 		"kuru_kankaku": p["kuru_kankaku"],
 		# リプレイヘッダの装備アイテムは「試合終了時の残弾」ではなく
@@ -356,13 +368,19 @@ func reset_online_replay_sync_events() -> void:
 func append_replay_chat_event(player_name: String, message: String, color: Color, frame: int = -1) -> void:
 	replay_chat_events.append({
 		"frame": GameState.count if frame < 0 else frame,
-		"player_name": player_name,
-		"message": message,
+		"player_name": sanitize_chat_text(player_name, CHAT_MAX_NAME_LENGTH),
+		"message": sanitize_chat_text(message, CHAT_MAX_MESSAGE_LENGTH),
 		"color": color,
 	})
 
 func append_chat_message(player_name: String, message: String, color: Color = Color(162.0/255.0, 162.0/255.0, 64.0/255.0), record_replay_event: bool = true) -> void:
-	var full_text := "%s : %s" % [player_name, message]
+	var safe_name := sanitize_chat_text(player_name, CHAT_MAX_NAME_LENGTH)
+	if safe_name == "":
+		safe_name = "Player"
+	var safe_message := sanitize_chat_text(message, CHAT_MAX_MESSAGE_LENGTH)
+	if safe_message == "":
+		return
+	var full_text := "%s : %s" % [safe_name, safe_message]
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = ThemeDB.fallback_font_size
 	var max_width_px := 280.0
@@ -376,7 +394,7 @@ func append_chat_message(player_name: String, message: String, color: Color = Co
 		_push_chat_line(line2, color)
 
 	if record_replay_event:
-		append_replay_chat_event(player_name, message, color)
+		append_replay_chat_event(safe_name, safe_message, color)
 
 func process_replay_chat_events() -> void:
 	while replay_chat_event_cursor < replay_chat_events.size():
@@ -455,15 +473,6 @@ var use_key_single: Array[int]  = [0, 0, 0, 0, 0, 0, 0, 0]
 var use_key_vs_1p:  Array[int]  = [0, 0, 0, 0, 0, 0, 0, 0]
 var use_key_vs_2p:  Array[int]  = [0, 0, 0, 0, 0, 0, 0, 0]
 
-
-# ============================================================
-# 状態遷移ヘルパー
-# ============================================================
-func change_joutai(new_joutai: int) -> void:
-	joutai_flag = new_joutai
-
-func is_joutai(check: int) -> bool:
-	return joutai_flag == check
 
 # ネット対戦設定（永続化対象）
 var online_menu: Dictionary = {

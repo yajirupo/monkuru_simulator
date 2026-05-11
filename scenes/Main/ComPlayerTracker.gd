@@ -33,16 +33,8 @@ func get_estimated_enemy_pos(enemy: Dictionary, kuru_container: Node) -> Vector2
 	return _estimated_pos
 
 
-# ============================================================
-# [追加] is_tracking()
-#
-# ComDebugOverlay / ComThinkRoutine が「現在マント追跡中か」を
-# 外部から参照するための公開ゲッター。
-# 戻り値が true = 敵はマント中で、推定座標を使用している。
-# ============================================================
-func is_tracking() -> bool:
-	return _cloak_was_active
-
+func reset() -> void:
+	_reset()
 
 func _update_from_new_kuru(kuru_container: Node) -> void:
 	if kuru_container == null:

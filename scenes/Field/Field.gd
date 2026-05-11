@@ -256,46 +256,6 @@ func _set_circle_sprite(parent: Node, node_name: String, pos: Vector2, tex_idx: 
 
 
 # ============================================================
-# チャット追加
-# void getChat(int playerNum) の移植
-# ============================================================
-func get_chat(player_num: int) -> void:
-	var p: Dictionary = GameState.player[player_num]
-
-	# 空き行を探す（先頭から）
-	var line: int
-	if GameState.chat_str[0] == "":
-		line = 0
-	elif GameState.chat_str[1] == "":
-		line = 1
-	elif GameState.chat_str[2] == "":
-		line = 2
-	else:
-		# 全行埋まっていたら上にスクロール
-		line = 2
-		GameState.chat_str[0] = GameState.chat_str[1]
-		GameState.chat_str[1] = GameState.chat_str[2]
-		GameState.chat_color[0] = GameState.chat_color[1]
-		GameState.chat_color[1] = GameState.chat_color[2]
-
-	# 時刻計算（count はフレーム数、FPS=60）
-	var c: int = GameState.count
-	@warning_ignore("integer_division")
-	var minutes: int = c / 3600
-	@warning_ignore("integer_division")
-	var seconds: int = (c % 3600) / 60
-	# csec: C++元コード "(count%60) + (count%60)*2/3" の再現
-	var frames: int  = c % 60
-	var csec: int    = frames + int(frames * 2 / 3.0)
-
-	GameState.chat_str[line] = "[被弾] %s (%d分%02d秒%02d)" % [
-		p["name"], minutes, seconds, csec
-	]
-	GameState.chat_color[line] = Color.BLACK
-	_draw_chat()
-
-
-# ============================================================
 # 背景テクスチャ読み込み
 # ============================================================
 func _safe_load(path: String) -> Texture2D:

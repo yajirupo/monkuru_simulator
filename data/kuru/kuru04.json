@@ -1,0 +1,11 @@
+{
+  "name": "ポプリ",
+  "speed": -2,
+  "dankai": 4,
+  "kankaku": 0,
+  "speed_up": 1,
+  "shot_up": 0,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru003.png",
+  "draw_offset_x": 15.0
+}

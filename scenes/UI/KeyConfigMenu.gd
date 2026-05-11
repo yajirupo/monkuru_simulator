@@ -29,9 +29,11 @@ func _build_ui() -> void:
 
 
 	var back_btn := Button.new()
-	back_btn.text                = "メインメニューへ戻る"
+	back_btn.text                = "戻る"
 	back_btn.custom_minimum_size = Vector2(220, 30)
 	back_btn.focus_mode          = Control.FOCUS_NONE
+	back_btn.shortcut_in_tooltip = false
+	back_btn.tooltip_text        = "Esc"
 	back_btn.pressed.connect(func(): GameState.joutai_flag = Enums.JoutaiType.MAIN_MENU)
 	vbox.add_child(back_btn)
 

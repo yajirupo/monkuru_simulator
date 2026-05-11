@@ -1,0 +1,11 @@
+{
+  "name": "ヘバ",
+  "speed": -3,
+  "dankai": 5,
+  "kankaku": 0,
+  "speed_up": 0,
+  "shot_up": 0,
+  "power_up": 1,
+  "sheet_path": "res://assets/images/kuru/cm_kuru021.png",
+  "draw_offset_x": 18.0
+}

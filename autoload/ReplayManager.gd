@@ -30,9 +30,10 @@ func replay_data_read(num: int) -> bool:
 	p["item_speed"]  = p["max_speed"]
 	p["item_shot"]   = p["max_shot"]
 	p["item_power"]  = p["max_power"]
-	p["speed"]       = Constants.PLAYER_DEFAULT_SPEED + p["item_speed"] * Constants.PLAYER_SPEED_UP
+	p["speed"]       = (Constants.PLAYER_DEFAULT_SPEED + p["item_speed"] * Constants.PLAYER_SPEED_UP) / 2
 	var _ks := f.get_32()
-	p["kuru_speed"]  = _ks if _ks < 0x80000000 else _ks - 0x100000000
+	var _kuru_speed_stat: int = _ks if _ks < 0x80000000 else _ks - 0x100000000
+	p["kuru_speed"]  = Constants.kuru_speed_stat_to_move_speed(_kuru_speed_stat)
 	p["kuru_dankai"] = f.get_32()
 	p["kuru_kankaku"]= f.get_32()
 	for i in range(3):

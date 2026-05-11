@@ -45,10 +45,28 @@ enum PlayerType {
 # くるの種類
 # ============================================================
 enum KuruType {
-	KIHON,   # 基本くる
-	POPURI,  # ポプリ
-	CHEAT,   # チートくる
-	KUSHI,   # クシィ
+	KIHON,      # 基本くる
+	MANGO,      # マンゴ
+	MARO,       # マロ
+	KUSHI,      # クシィ
+	POPURI,     # ポプリ
+	KURI,       # クリ
+	HONEY,      # ハニー
+	MONE,       # モネ
+	SHAMPOO,    # シャンプー
+	DUMMY,      # ダミ
+	SHINE,      # シネ
+	TOTO,       # トト
+	YORAN,      # ヨラン
+	CHIN,       # チン
+	DOTORI,     # ドトリ
+	SONYI,      # ソンイ
+	DIVER,      # ディバー
+	KAMUCHO,    # カムチョ
+	HEBA,       # ヘバ
+	KAMI,       # カミ
+	POI,        # ポイ
+	MASUNGUN,   # 升ンガン
 }
 
 

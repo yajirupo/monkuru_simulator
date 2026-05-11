@@ -1,0 +1,11 @@
+{
+  "name": "トト",
+  "speed": 1,
+  "dankai": 4,
+  "kankaku": 0,
+  "speed_up": 0,
+  "shot_up": 0,
+  "power_up": 1,
+  "sheet_path": "res://assets/images/kuru/cm_kuru016.png",
+  "draw_offset_x": 22.0
+}

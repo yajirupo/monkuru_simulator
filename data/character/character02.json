@@ -1,0 +1,46 @@
+{
+  "name": "ウチ",
+  "max_stats": {
+    "speed": 5,
+    "shot": 7,
+    "power": 4
+  },
+  "sprites": {
+    "stand_d": {
+      "suffix": "StandD",
+      "cols": 9
+    },
+    "stand_u": {
+      "suffix": "StandU",
+      "cols": 9
+    },
+    "stand_l": {
+      "suffix": "StandL",
+      "cols": 9
+    },
+    "stand_r": {
+      "suffix": "StandR",
+      "cols": 9
+    },
+    "run_d": {
+      "suffix": "RunD",
+      "cols": 6
+    },
+    "run_u": {
+      "suffix": "RunU",
+      "cols": 6
+    },
+    "run_l": {
+      "suffix": "RunL",
+      "cols": 6
+    },
+    "run_r": {
+      "suffix": "RunR",
+      "cols": 6
+    },
+    "death": {
+      "suffix": "Death",
+      "cols": 20
+    }
+  }
+}

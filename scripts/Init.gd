@@ -53,9 +53,9 @@ func ini_game(scene_root: Node) -> void:
 			child.queue_free()
 
 	# フィールド初期化（全マスをBROKENに）
-	for i in range(Constants.FIELD_ROWS):
-		for j in range(Constants.FIELD_COLS):
-			GameState.masu[i][j]["kind"] = Enums.MasuKind.BROKEN
+	for x in range(Constants.FIELD_COLS):
+		for y in range(Constants.FIELD_ROWS):
+			GameState.masu[x][y]["kind"] = Enums.MasuKind.BROKEN
 	_apply_stage_hard_blocks()
 
 	# BGM再生
@@ -88,4 +88,4 @@ func _apply_stage_hard_blocks() -> void:
 	for y in range(center_y0, center_y0 + 2):
 		for x in range(center_x0, center_x0 + 2):
 			if y >= 0 and y < Constants.FIELD_ROWS and x >= 0 and x < Constants.FIELD_COLS:
-				GameState.masu[y][x]["kind"] = Enums.MasuKind.HARD_BLOCK
+				GameState.masu[x][y]["kind"] = Enums.MasuKind.HARD_BLOCK

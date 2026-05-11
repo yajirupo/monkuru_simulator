@@ -71,11 +71,7 @@ func _build_ui() -> void:
 		func(): return "%.2f" % (GameData.menu["kuru_kankaku"] / 60.0),
 		func(): GameData.menu["kuru_kankaku"] = _wrap(GameData.menu["kuru_kankaku"] - 3, 0, 30),
 		func(): GameData.menu["kuru_kankaku"] = _wrap(GameData.menu["kuru_kankaku"] + 3, 0, 30))
-	_arrow_row(root, "ステージ",
-		func(): return GameState.get_stage_name(GameData.menu["stage"]),
-		func(): GameData.menu["stage"] = _wrap(GameData.menu["stage"] - 1, 0, GameState.STAGE_COUNT - 1),
-		func(): GameData.menu["stage"] = _wrap(GameData.menu["stage"] + 1, 0, GameState.STAGE_COUNT - 1))
-
+	
 	root.add_child(HSeparator.new())
 
 	# ── アイテム行 ────────────────────────────────────────────
@@ -85,7 +81,14 @@ func _build_ui() -> void:
 			func(): return ITEM_NAMES[GameData.menu["item_type"][slot]],
 			func(): GameData.menu["item_type"][slot] = _wrap(GameData.menu["item_type"][slot] - 1, 0, 4),
 			func(): GameData.menu["item_type"][slot] = _wrap(GameData.menu["item_type"][slot] + 1, 0, 4))
-
+	
+	root.add_child(HSeparator.new())
+	
+	_arrow_row(root, "ステージ",
+		func(): return GameState.get_stage_name(GameData.menu["stage"]),
+		func(): GameData.menu["stage"] = _wrap(GameData.menu["stage"] - 1, 0, GameState.STAGE_COUNT - 1),
+		func(): GameData.menu["stage"] = _wrap(GameData.menu["stage"] + 1, 0, GameState.STAGE_COUNT - 1))
+	
 	root.add_child(HSeparator.new())
 
 	# ── アクションボタン ─────────────────────────────────────
@@ -101,10 +104,14 @@ func _build_ui() -> void:
 	# 2. ボタン生成（戻り値としてボタンを受け取れるようにするか、直接設定する）
 	var start_btn = _add_btn(action_row, "ゲームスタート", _on_start)
 	start_btn.shortcut = start_shortcut # ここでショートカットを割り当て
+	start_btn.shortcut_in_tooltip = false
+	start_btn.tooltip_text = "Enter"
 	
 	_add_btn(action_row, "リプレイ保存",   _on_replay_save)
 	_add_btn(action_row, "リプレイ読込",   _on_replay_load)
-	_add_btn(action_row, "戻る",           _on_back)
+	var back_btn = _add_btn(action_row, "戻る", _on_back)
+	back_btn.shortcut_in_tooltip = false
+	back_btn.tooltip_text = "Esc"
 	root.add_child(action_row)
 
 # ── ユーティリティ ──────────────────────────────────────────

@@ -9,7 +9,6 @@ extends RefCounted
 # 定数
 # ============================================================
 const CHAT_COLOR_PLAYER := Color(162.0/255.0, 162.0/255.0, 64.0/255.0)
-const CHAT_MAX_WIDTH_PX  := 280.0
 
 # ============================================================
 # 公開プロパティ
@@ -80,6 +79,7 @@ func build_ui(parent: Node) -> void:
 	_line_edit                        = LineEdit.new()
 	_line_edit.name                   = "ChatLineEdit"
 	_line_edit.placeholder_text       = "メッセージを入力..."
+	_line_edit.max_length             = GameState.CHAT_MAX_MESSAGE_LENGTH
 	_line_edit.custom_minimum_size    = Vector2(300, 32)
 	_line_edit.caret_blink            = true
 	_line_edit.caret_blink_interval   = 0.5
@@ -163,7 +163,7 @@ func close() -> void:
 func _submit_message() -> void:
 	var message := ""
 	if _line_edit:
-		message = _line_edit.text.strip_edges()
+		message = GameState.sanitize_chat_text(_line_edit.text, GameState.CHAT_MAX_MESSAGE_LENGTH)
 	if message != "":
 		var my_idx := 0
 		if GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME:

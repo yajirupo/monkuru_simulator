@@ -1,522 +1,332 @@
+# scenes/Main/ComPathfinder.gd
 class_name ComPathfinder
-extends RefCounted
+extends Node
 
-# ── 方向優先順位シャッフル ──────────────────────────────────────
-# 同スコアの移動先が複数あるとき、どの方向を優先するかを決める順序。
-# DIR_SHUFFLE_INTERVAL フレームごとに再シャッフルすることで、
-# 毎回同じ動きにならないようにする。
-const DIR_SHUFFLE_INTERVAL := 60  # 約1秒（60fps想定）
-
-var _dir_order: Array[int] = [0, 1, 2, 3]
-var _last_dir_tick: int = -1
-
-# 危険判定ユーティリティへの参照（コンストラクタで注入）
-var _detector: ComDangerDetector
-
-
-func _init(detector: ComDangerDetector) -> void:
-	_detector = detector
-
-
-# ============================================================
-# refresh_dir_order()
+# ====================================================================
+#  COM の移動方向を決定するクラス
 #
-# DIR_SHUFFLE_INTERVAL フレームごとに _dir_order をシャッフルする。
-# ============================================================
-func refresh_dir_order() -> void:
-	@warning_ignore("integer_division")
-	var tick: int = Engine.get_process_frames() / DIR_SHUFFLE_INTERVAL
-	if tick != _last_dir_tick:
-		_last_dir_tick = tick
-		_dir_order.shuffle()
-
-
-# ============================================================
-# pick_escape_direction_bfs()
+#  【役割】
+#   危険度マップ (ComDangerDetector) の情報をもとに、
+#   BFS（幅優先探索）で脱出経路や接近経路を求め、
+#   そこへ向かうための「最初の一歩」を返す。
 #
-# pick_escape_quality() の薄いラッパー。移動方向（int）だけを返す。
-# 既存の呼び出し側に変更を加えずに済む。
-# ============================================================
-func pick_escape_direction_bfs(start_x: int, start_y: int, bomb_container: Node, kuru_container: Node, move_frames: int = 1) -> int:
-	return pick_escape_quality(start_x, start_y, bomb_container, kuru_container, move_frames)["dir"]
+#  【脱出経路探索の考え方（精密設計）】
+#   プレイヤーの現在サブピクセル座標・向き・速度を引数に受け取り、
+#   現在マスを始点として4方向BFSを行う。
+#   キューの各ノードはサブピクセル入場座標・向き・経過フレーム・深さを保持し、
+#   振り向き時間・残り脱出距離・当たり判定ウィンドウ（BOMB_SPREAD_TIME+1F持続）
+#   を精密に考慮する。永続安全マスが見つかったら即採用して打ち切る。
+#   見つからなければ経過フレーム数が最大のマスを採用する。
+# ====================================================================
+
+const DEPTH: int = 12
+
+var _danger_detector: ComDangerDetector = null
+
+var _debug_last_escape_path: Array = []
+var _debug_last_approach_path: Array = []
+
+# ThinkRoutine から渡される方向優先順位
+var _dir_order: Array = [0, 1, 2, 3]
 
 
-# ============================================================
-# pick_escape_quality()  ── タイミング考慮型BFS脱出ルーティン（品質情報つき）
+func initialize(detector: ComDangerDetector) -> void:
+	_danger_detector = detector
+
+func set_dir_order(order: Array) -> void:
+	_dir_order = order
+
+
+# --------------------------------------------------------------------
+# 現在位置から指定方向の隣接マスへ入るまでに要するフレーム数を返す。
+# Player.gd では方向キーを押しても Constants.WAIT フレーム未満の間は
+# 向きだけ変わって移動しないため、押下継続フレーム数に応じた
+# 振り向き待機時間も到着時刻へ加算する。
+# --------------------------------------------------------------------
+func _move_per_frame(player_num: int, speed: int = 0) -> float:
+	if speed > 0:
+		return float(speed)
+	var p: Dictionary = GameState.player[player_num]
+	if p["cr_item_use"] == Enums.ItemType.SHOES:
+		return float(Constants.SHOES_SPEED)
+	return float(p["speed"])
+
+func _move_frames(player_num: int, speed: int = 0) -> int:
+	var move: float = _move_per_frame(player_num, speed)
+	if move <= 0:
+		return 999
+	return ceili(320.0 / move)
+
+func _turn_wait_frames(player_num: int, current_dir: int, next_dir: int, is_current_cell: bool) -> int:
+	if is_current_cell:
+		var use_key: Array = GameState.use_key[player_num]
+		return maxi(Constants.WAIT - (int(use_key[next_dir]) + 1), 0)
+	return 0 if current_dir == next_dir else Constants.WAIT - 1
+
+func _arrival_frames(player_num: int, from_cell: Vector2i, dir: int, move_frames: int, current_dir: int, move_per_frame: float) -> int:
+	var p: Dictionary = GameState.player[player_num]
+	var current_cell := Vector2i(p["masu_x"], p["masu_y"])
+	var is_current_cell: bool = from_cell == current_cell
+	var turn_wait: int = _turn_wait_frames(player_num, current_dir, dir, is_current_cell)
+	if is_current_cell:
+		var remaining_frames: int = _frames_to_leave_current_cell(player_num, dir, move_per_frame)
+		return turn_wait + remaining_frames
+	return turn_wait + move_frames
+
+func _frames_to_leave_current_cell(player_num: int, dir: int, move: float) -> int:
+	var p: Dictionary = GameState.player[player_num]
+	if move <= 0:
+		return 999
+
+	return Utility.frames_to_exit_at(p["x"], p["y"], dir, int(move))
+
+
+# ====================================================================
+#  脱出方向の選択（緊急回避用）
 #
-# 戻り値 Dictionary:
-#   "dir"         : int  最善の移動方向（0〜3）。逃げ場がなければ -1
-#   "is_safe"     : bool 真に安全な経路（到達時も含め爆風ゼロ）が存在するか
-#   "path_margin" : int  経路上の最小余裕フレーム
-#   "dest_fuh"    : int  目的地の hit_frame
-#   "escape_path" : Array[Vector2i]  最良経路のマス列
-#
-# ■ 3段階の優先度（上ほど優先）
-#   TIER 3 SAFE_DEST  : 経路安全 かつ 目的地が永久安全（SAFE_INF）
-#                       → 最も近い（depth最小）を選ぶ。同距離なら余裕最大。
-#   TIER 2 ROUTE_SAFE : 経路安全 かつ 目的地はいずれ爆風に巻き込まれる
-#                       → dest_fuh が最大のものを選ぶ。
-#   TIER 1 DESPERATE  : 爆風壁チェックなし。最も遅く被弾するマスへ。
-#
-# ■ 移動速度の考慮（move_frames パラメータ）
-#   depth d マスへの到達フレーム = d * move_frames
-#   hit_frame(sq) <= 到達フレーム なら通過不可（爆風壁として扱う）
-#
-# ■ ブロックチェック
-#   GameState.masu[ny][nx] が BROKEN（空きマス）以外は通過不可。
-# ============================================================
-func pick_escape_quality(start_x: int, start_y: int, bomb_container: Node, kuru_container: Node, move_frames: int = 1) -> Dictionary:
-	const DEPTH := 8                         # 探索深さ（マス数）
-	const DIRS  := [[1, 0], [-1, 0], [0, 1], [0, -1]]
-	# 優先度 tier 定数
-	const TIER_SAFE_DEST  := 3  # 到達時も永久安全
-	const TIER_ROUTE_SAFE := 2  # 経路は安全だが目的地はいずれ爆風
-	const TIER_DESPERATE  := 1  # 爆風壁なし・最長生存
-	var safe_inf: int = ComDangerDetector.SAFE_INF
-	var dangerous_kuru_cells := _build_dangerous_kuru_cell_cache(kuru_container)
+#  内部で _bfs_evaluate_escape を呼び、最初の一歩を返す。
+#  戻り値 Dictionary:
+#    "dir"        : 最初の一歩の方向 (0～3)、移動不可時は -1
+#    "safe"       : 安全な経路かどうか
+# ====================================================================
+func pick_escape_quality(player_num: int, _unused: ComDangerDetector = null) -> Dictionary:
+	var p: Dictionary = GameState.player[player_num]
+	var start_x: int = p["masu_x"]
+	var start_y: int = p["masu_y"]
+	var speed: int = int(_move_per_frame(player_num))
 
-	# ── イベントリストを 1 回だけ構築 ─────────────────────────────────────
-	var events: Array = _detector.build_event_list(bomb_container, kuru_container)
+	var bfs_result: Dictionary = _bfs_evaluate_escape(p["x"], p["y"], p["muki"], speed)
 
-	# ── BFS キュー ────────────────────────────────────────────────────────
-	# 要素: x, y, dir（最初の1歩）, depth, path_min_margin, path
-	var queue: Array = []
-	var best_margin_to: Dictionary = {}  # Vector2i → path_min_margin の最良値
-
-	for di in range(4):
-		var d: int = _dir_order[di]
-		var nx: int = start_x + DIRS[d][0]
-		var ny: int = start_y + DIRS[d][1]
-		if not _is_walkable(nx, ny, dangerous_kuru_cells):
-			continue
-		var key   := Vector2i(nx, ny)
-		var fuh:  int = _detector.hit_frame_from_events(nx, ny, events)
-		var arr:  int = 1 * move_frames  # depth=1 での到達フレーム
-		# 到達時に爆風 → 爆風壁としてスキップ
-		if fuh < safe_inf and fuh <= arr:
-			continue
-		var margin: int = safe_inf if fuh >= safe_inf else (fuh - arr)
-		if not best_margin_to.has(key) or margin > best_margin_to[key]:
-			best_margin_to[key] = margin
-			queue.append({
-				"x": nx, "y": ny, "dir": d,
-				"depth": 1, "path_min_margin": margin,
-				"path": [key]
-			})
-
-	# ── 最良候補 ──────────────────────────────────────────────────────────
-	var best_tier:       int   = 0
-	var best_dir:        int   = -1
-	var best_depth:      int   = 999999  # TIER 3 では距離最小化に使用
-	var best_dest_fuh:   int   = -1
-	var best_path_margin:int   = -99999
-	var best_path:       Array = []
-
-	while queue.size() > 0:
-		var node: Dictionary = queue.pop_front()
-		var nx:              int  = node["x"]
-		var ny:              int  = node["y"]
-		var dir:             int  = node["dir"]
-		var depth:           int  = node["depth"]
-		var path_min_margin: int  = node["path_min_margin"]
-
-		var dest_fuh:   int  = _detector.hit_frame_from_events(nx, ny, events)
-		# このノードの tier 判定（主BFSではpath_min_margin > 0が保証される）
-		var tier: int
-		if dest_fuh >= safe_inf:
-			tier = TIER_SAFE_DEST
-		else:
-			tier = TIER_ROUTE_SAFE
-
-		# ── 候補更新判定 ──
-		var better: bool = false
-		if tier > best_tier:
-			better = true
-		elif tier == best_tier:
-			match tier:
-				TIER_SAFE_DEST:
-					# 最近傍優先、同距離なら経路余裕最大
-					if depth < best_depth:
-						better = true
-					elif depth == best_depth and path_min_margin > best_path_margin:
-						better = true
-				TIER_ROUTE_SAFE, TIER_DESPERATE:
-					# 目的地の被弾タイミングが遅いほど良い
-					if dest_fuh > best_dest_fuh:
-						better = true
-					elif dest_fuh == best_dest_fuh and path_min_margin > best_path_margin:
-						better = true
-
-		if better:
-			best_tier        = tier
-			best_dir         = dir
-			best_depth       = depth
-			best_dest_fuh    = dest_fuh
-			best_path_margin = path_min_margin
-			best_path        = node["path"]
-
-		# ── 展開 ──
-		if depth < DEPTH:
-			for di2 in range(4):
-				var d2:  int = _dir_order[di2]
-				var nnx: int = nx + DIRS[d2][0]
-				var nny: int = ny + DIRS[d2][1]
-				if not _is_walkable(nnx, nny, dangerous_kuru_cells):
-					continue
-				var nkey      := Vector2i(nnx, nny)
-				var nfuh:  int = _detector.hit_frame_from_events(nnx, nny, events)
-				var narr:  int = (depth + 1) * move_frames
-				# 到達時に爆風 → 爆風壁としてスキップ
-				if nfuh < safe_inf and nfuh <= narr:
-					continue
-				var step_margin: int = safe_inf if nfuh >= safe_inf else (nfuh - narr)
-				var new_min: int     = mini(path_min_margin, step_margin)
-				if not best_margin_to.has(nkey) or new_min > best_margin_to[nkey]:
-					best_margin_to[nkey] = new_min
-					var np: Array = node["path"].duplicate()
-					np.append(nkey)
-					queue.append({
-						"x": nnx, "y": nny, "dir": dir,
-						"depth": depth + 1, "path_min_margin": new_min,
-						"path": np
-					})
-
-	# ── TIER 1 DESPERATE: 全面爆風時の多段BFS ────────────────────────────
-	# 主BFSが安全経路を1本も見つけられなかった場合のみ実行。
-	#
-	# 「経路上で最初に爆風に当たるフレーム（death_frame）」を最大化する方向を選ぶ。
-	# 爆風壁チェックなしで全マスを探索し、最も長生きできる経路の先頭方向を返す。
-	#
-	# death_frame の定義:
-	#   あるステップで到達するマス C に対し、fuh(C) <= 到達フレーム なら
-	#   そのマスに踏み込んだ瞬間に被弾する（death_frame = fuh(C)）。
-	#   SAFE_INF = その経路上ではまだ被弾していない（通過可能）。
-	#   経路全体の death_frame = ステップごとの death_frame の最小値。
-	#
-	# 「当たり判定が最も遅く発生するマス」を目指すことで、
-	# 全面爆風でも被弾を最大限遅らせられる方向に移動する。
-	if best_dir < 0:
-		var desp_best_dir:       int   = -1
-		var desp_best_death:     int   = -1    # 経路全体での最初の被弾フレーム
-		var desp_best_dest_fuh:  int   = -1    # 目的地の hit_frame（タイブレーク用）
-		var desp_best_path:      Array = []
-		# このマスに至る最良 death_frame を記録（重複展開防止）
-		var desp_best_death_to: Dictionary = {}
-		var desp_queue: Array = []
-
-		# ── 初期ノード（隣接4マス） ──
-		for di in range(4):
-			var d:   int = _dir_order[di]
-			var nx:  int = start_x + DIRS[d][0]
-			var ny:  int = start_y + DIRS[d][1]
-			if nx < 0 or nx >= Constants.FIELD_COLS or ny < 0 or ny >= Constants.FIELD_ROWS:
-				continue
-			if _is_hard_block(nx, ny):
-				continue
-			if _has_dangerous_kuru_at_cached(nx, ny, dangerous_kuru_cells):
-				continue
-			var arr:   int = 1 * move_frames
-			var fuh:   int = _detector.hit_frame_from_events(nx, ny, events)
-			# 到達時に被弾するなら death_frame = fuh、通過可能なら SAFE_INF
-			var death: int = fuh if (fuh < safe_inf and fuh <= arr) else safe_inf
-			var key := Vector2i(nx, ny)
-			if not desp_best_death_to.has(key) or death > desp_best_death_to[key]:
-				desp_best_death_to[key] = death
-				desp_queue.append({
-					"x": nx, "y": ny, "dir": d, "depth": 1,
-					"death_frame": death, "path": [key]
-				})
-
-		# ── BFS ループ ──
-		while desp_queue.size() > 0:
-			var node: Dictionary = desp_queue.pop_front()
-			var nx:          int   = node["x"]
-			var ny:          int   = node["y"]
-			var dir:         int   = node["dir"]
-			var depth:       int   = node["depth"]
-			var death_frame: int   = node["death_frame"]
-
-			var dest_fuh: int = _detector.hit_frame_from_events(nx, ny, events)
-
-			# 候補更新:
-			#   1. death_frame が大きいほど良い（長生き）
-			#   2. 同点なら dest_fuh が大きい方（目的地の被弾が遅い）
-			var better: bool = false
-			if desp_best_dir < 0:
-				better = true
-			elif death_frame > desp_best_death:
-				better = true
-			elif death_frame == desp_best_death and dest_fuh > desp_best_dest_fuh:
-				better = true
-
-			if better:
-				desp_best_dir      = dir
-				desp_best_death    = death_frame
-				desp_best_dest_fuh = dest_fuh
-				desp_best_path     = node["path"]
-
-			# 被弾済み経路はこれ以上展開しない（踏み込んだ時点で死亡）
-			if death_frame < safe_inf:
-				continue
-
-			# ── 展開 ──
-			if depth < DEPTH:
-				for di2 in range(4):
-					var d2:  int = _dir_order[di2]
-					var nnx: int = nx + DIRS[d2][0]
-					var nny: int = ny + DIRS[d2][1]
-					if nnx < 0 or nnx >= Constants.FIELD_COLS or nny < 0 or nny >= Constants.FIELD_ROWS:
-						continue
-					if _is_hard_block(nnx, nny):
-						continue
-					if _has_dangerous_kuru_at_cached(nnx, nny, dangerous_kuru_cells):
-						continue
-					var narr:  int = (depth + 1) * move_frames
-					var nfuh:  int = _detector.hit_frame_from_events(nnx, nny, events)
-					var step_death: int = nfuh if (nfuh < safe_inf and nfuh <= narr) else safe_inf
-					# 経路の death_frame = これまでの最小 と この一歩の最小
-					var new_death: int = mini(death_frame, step_death)
-					var nkey := Vector2i(nnx, nny)
-					if not desp_best_death_to.has(nkey) or new_death > desp_best_death_to[nkey]:
-						desp_best_death_to[nkey] = new_death
-						var np: Array = node["path"].duplicate()
-						np.append(nkey)
-						desp_queue.append({
-							"x": nnx, "y": nny, "dir": d2, "depth": depth + 1,
-							"death_frame": new_death, "path": np
-						})
-
-		# ── 留まる方が長生きできる場合は移動しない ──
-		# 例: 自分のいるマスの hit_frame が、どの方向に移動した場合の death_frame より大きければ
-		#     その場に留まる（dir = -1 → ComThinkRoutine でキー未入力 = 停止）
-		var stay_fuh: int = _detector.hit_frame_from_events(start_x, start_y, events)
-		if stay_fuh > desp_best_death:
-			# 留まる方が長生き → dir は -1 のまま（移動しない）
-			best_tier     = TIER_DESPERATE
-			best_dest_fuh = stay_fuh
-			best_path     = []
-		elif desp_best_dir >= 0:
-			best_dir      = desp_best_dir
-			best_tier     = TIER_DESPERATE
-			best_dest_fuh = desp_best_dest_fuh
-			best_path     = desp_best_path
-
-	return {
-		"dir":         best_dir,
-		"is_safe":     best_tier >= TIER_SAFE_DEST,  # SAFE_DEST のみ真の安全
-		"path_margin": best_path_margin,
-		"dest_fuh":    best_dest_fuh,
-		"escape_path": best_path,
+	var result: Dictionary = {
+		"dir": -1,
+		"safe": bfs_result["safe"]
 	}
 
+	if bfs_result["chosen_key"] != "":
+		var path: Array = []
+		var current: String = bfs_result["chosen_key"]
+		while bfs_result["parent"].has(current) and bfs_result["parent"][current] != Vector2i(-1, -1):
+			var coords: PackedStringArray = current.split(",")
+			path.push_front(Vector2i(int(coords[0]), int(coords[1])))
+			var p_vec: Vector2i = bfs_result["parent"][current]
+			current = "%d,%d" % [p_vec.x, p_vec.y]
+		_debug_last_escape_path = path
+		if not path.is_empty():
+			var first_cell: Vector2i = path[0]
+			var dx = first_cell.x - start_x
+			var dy = first_cell.y - start_y
+			if dx == 1 and dy == 0:    result["dir"] = 0
+			elif dx == -1 and dy == 0: result["dir"] = 1
+			elif dx == 0 and dy == 1:  result["dir"] = 2
+			elif dx == 0 and dy == -1: result["dir"] = 3
+	else:
+		_debug_last_escape_path = []
 
-# ============================================================
-# pick_approach_direction()
+	return result
+
+
+# --------------------------------------------------------------------
+# 現在の速度または指定された速度で、安全な脱出先があるかどうか
+# speed=0 なら現在の速度、それ以外は 0.1px 単位の速度指定
+# --------------------------------------------------------------------
+func can_escape_safely(player_num: int, speed: int = 0) -> bool:
+	var p: Dictionary = GameState.player[player_num]
+	var actual_speed: int = int(_move_per_frame(player_num, speed))
+	if actual_speed <= 0:
+		return false
+	var result: Dictionary = _bfs_evaluate_escape(p["x"], p["y"], p["muki"], actual_speed)
+	return result["safe"]
+
+
+# ====================================================================
+#  BFS 探索本体（精密設計）
 #
-# 敵の射程位置（同行・同列）を目指して移動する方向を返す。
-# _dir_order 順に評価するため、同スコア時の優先方向が約1秒ごとに変わる。
-# ============================================================
-func pick_approach_direction(me_x: int, me_y: int, enemy_x: int, enemy_y: int, power: int, bomb_container: Node, kuru_container: Node) -> int:
-	const DIRS := [[1, 0], [-1, 0], [0, 1], [0, -1]]
-	# 1手の貪欲評価だけだと、硬いブロック裏の敵に対して往復しやすい。
-	# ここでは「爆弾を当てられる候補マス」まで BFS で最短経路を探索し、
-	# その first-step を返すことで、迂回移動を選択できるようにする。
-	const MAX_DEPTH := 12
-	var dangerous_kuru_cells := _build_dangerous_kuru_cell_cache(kuru_container)
-
-	var best_dir: int = -1
-	var best_depth: int = 999999
-	var best_target_danger: int = -999999
-	var best_target_distance: int = 999999
+#  引数:
+#    x, y  : プレイヤーの現在サブピクセル座標（0.1px 単位整数）
+#    dir   : 現在の向き（0=RIGHT, 1=LEFT, 2=DOWN, 3=UP）
+#    speed : 移動速度（0.1px/frame 単位整数）
+#
+#  (x,y) の属するマス (masu_x, masu_y) を始点として4方向BFSを行う。
+#
+#  キューの各ノードは以下を保持する:
+#    "x","y"   : そのマスへの入場時サブピクセル座標
+#    "mx","my" : マス座標
+#    "dir"     : 入場時の向き
+#    "elapsed" : BFS開始からの経過フレーム数
+#    "depth"   : 何マス目か（DEPTHで打ち切り）
+#
+#  隣接マスへの追加条件:
+#    1. 未探索マスである
+#    2. 移動可能マスである
+#    3. 今居るマスの当たり判定が来る前に脱出できる
+#       （dir と移動方向が異なる場合は振り向きに Constants.WAIT F かかる）
+#    4. 隣接マスへの到着時、当たり判定が発生中でない
+#       （当たり判定は発生から BOMB_SPREAD_TIME+1 F 持続するため、
+#        到着が判定ウィンドウを過ぎた後なら進入可能）
+#    ソート: 到着直後から当たり判定が発生するまでの猶予フレーム数の降順
+#
+#  永続安全マス（hit_frame>=9999）に到達したら即座に採用して打ち切る。
+#  見つからなければ経過フレーム数が最大のマスを採用する。
+#
+#  戻り値 Dictionary:
+#    "safe"       : 安全な経路かどうか
+#    "chosen_key" : 採用された目的地の "mx,my" 文字列
+#    "parent"     : 経路復元用の親マップ
+#    "dest_hit"   : 目的地の被弾開始フレーム
+# ====================================================================
+func _bfs_evaluate_escape(x: int, y: int, dir: int, speed: int) -> Dictionary:
+	# 開始マス座標
+	var start_cell := Utility.world_to_cell(x, y)
+	var smx: int = start_cell.x
+	var smy: int = start_cell.y
 
 	var queue: Array = []
 	var visited: Dictionary = {}
+	var parent: Dictionary = {}  # "mx,my" -> Vector2i(parent_mx, parent_my)
 
-	for di in range(4):
-		var d: int = _dir_order[di]
-		var nx: int = me_x + DIRS[d][0]
-		var ny: int = me_y + DIRS[d][1]
-		if not _is_walkable(nx, ny, dangerous_kuru_cells):
+	var start_key: String = "%d,%d" % [smx, smy]
+	queue.append({
+		"x": x, "y": y,
+		"mx": smx, "my": smy,
+		"dir": dir,
+		"elapsed": 0,
+		"depth": 0
+	})
+	parent[start_key] = Vector2i(-1, -1)
+
+	var best_key: String = ""
+	var best_elapsed: int = -1
+	var best_hit: int = -1
+
+	while not queue.is_empty():
+		var cur: Dictionary = queue.pop_front()
+		var key: String = "%d,%d" % [cur["mx"], cur["my"]]
+		if visited.has(key):
 			continue
-		var dscore := _detector.bomb_danger_score(nx, ny, bomb_container)
-		if dscore < 0:
-			continue
-		var key := Vector2i(nx, ny)
-		visited[key] = 1
-		queue.append({"x": nx, "y": ny, "dir": d, "depth": 1})
+		visited[key] = true
 
-	while queue.size() > 0:
-		var node: Dictionary = queue.pop_front()
-		var x: int = node["x"]
-		var y: int = node["y"]
-		var dir: int = node["dir"]
-		var depth: int = node["depth"]
+		var cell_hit: int = _danger_detector.hit_frame_from_events(cur["mx"], cur["my"])
 
-		var dscore := _detector.bomb_danger_score(x, y, bomb_container)
-		if dscore >= 0 and _is_enemy_in_bomb_range(x, y, enemy_x, enemy_y, power):
-			var target_distance: int = abs(enemy_x - x) + abs(enemy_y - y)
-			var better := false
-			if depth < best_depth:
-				better = true
-			elif depth == best_depth and dscore > best_target_danger:
-				better = true
-			elif depth == best_depth and dscore == best_target_danger and target_distance < best_target_distance:
-				better = true
-			if better:
-				best_depth = depth
-				best_target_danger = dscore
-				best_target_distance = target_distance
-				best_dir = dir
+		# 永続安全マス → 即採用して打ち切り
+		if cell_hit >= 9999:
+			return {
+				"safe": true,
+				"chosen_key": key,
+				"parent": parent,
+				"dest_hit": 9999
+			}
 
-		if depth >= MAX_DEPTH:
+		# 経過フレーム最大を更新（安全でない最善候補）
+		if cur["elapsed"] > best_elapsed:
+			best_elapsed = cur["elapsed"]
+			best_hit = cell_hit
+			best_key = key
+
+		if cur["depth"] >= DEPTH:
 			continue
 
-		for di2 in range(4):
-			var d2: int = _dir_order[di2]
-			var nx2: int = x + DIRS[d2][0]
-			var ny2: int = y + DIRS[d2][1]
-			if not _is_walkable(nx2, ny2, dangerous_kuru_cells):
+		# このマスで、入場時点からの残り猶予フレーム
+		# （cell_hit: BFS開始時点からの被弾開始フレーム）
+		# remaining_safe <= 0 → 入場時すでに当たり判定中 → 脱出不可
+		var remaining_safe: int = cell_hit - cur["elapsed"]
+
+		# 隣接4マスを探索
+		var neighbors: Array = []
+		for d in range(4):
+			var nx: int = cur["mx"] + Utility.dx_from_dir(d)
+			var ny: int = cur["my"] + Utility.dy_from_dir(d)
+			var nkey: String = "%d,%d" % [nx, ny]
+
+			if not Utility.is_walkable_cell(nx, ny) or visited.has(nkey):
 				continue
-			var dscore2 := _detector.bomb_danger_score(nx2, ny2, bomb_container)
-			if dscore2 < 0:
+
+			# 振り向き時間（dir と移動方向が異なる場合は WAIT フレーム）
+			var turn_wait: int = 0 if cur["dir"] == d else Constants.WAIT
+			# 現在サブピクセル位置から方向 d にこのマスを出るまでのフレーム数
+			var exit_frames: int = Utility.frames_to_exit_at(cur["x"], cur["y"], d, speed)
+			var time_to_exit: int = turn_wait + exit_frames
+
+			# 条件3: 当たり判定が来る前にこのマスを脱出できるか
+			# time_to_exit < remaining_safe が必要（厳密な不等号）
+			if time_to_exit >= remaining_safe:
 				continue
-			var key2 := Vector2i(nx2, ny2)
-			if visited.has(key2):
+
+			# 隣接マスへの到着フレーム（BFS開始時点からの絶対フレーム）
+			var arrival: int = cur["elapsed"] + time_to_exit
+
+			# 隣接マスの当たり判定情報
+			var n_hit: int = _danger_detector.hit_frame_from_events(nx, ny)
+
+			# 条件4: 到着時に当たり判定が発生中でないか
+			# 当たり判定の有効ウィンドウ: [n_hit, n_hit + BOMB_SPREAD_TIME]（BOMB_SPREAD_TIME+1 F 持続）
+			# 到着が判定ウィンドウの前 or 後なら進入可能
+			var can_enter: bool
+			if n_hit >= 9999:
+				can_enter = true                                      # 永続安全
+			elif arrival < n_hit:
+				can_enter = true                                      # 判定前に到着
+			elif arrival > n_hit + Constants.BOMB_SPREAD_TIME:
+				can_enter = true                                      # 判定ウィンドウ終了後に到着
+			else:
+				can_enter = false                                     # 判定中に到着
+
+			if not can_enter:
 				continue
-			visited[key2] = depth + 1
-			queue.append({"x": nx2, "y": ny2, "dir": dir, "depth": depth + 1})
 
-	# 射程位置に行けない場合は、BFS で敵に最短接近できる first-step を選ぶ。
-	if best_dir >= 0:
-		return best_dir
+			# ソート用マージン: 到着直後から当たり判定が来るまでの猶予フレーム数
+			# （降順でソートするため、安全なものが大きい値になる）
+			var margin: int
+			if n_hit >= 9999 or arrival > n_hit + Constants.BOMB_SPREAD_TIME:
+				margin = 9999   # 永続安全 or 判定終了後到着 → 最優先
+			else:
+				margin = n_hit - arrival
 
-	var fallback_dir: int = -1
-	var fallback_depth: int = 999999
-	var fallback_dist: int = 999999
-	var fallback_danger: int = -999999
-	queue.clear()
-	visited.clear()
+			neighbors.append({
+				"nx": nx, "ny": ny, "nkey": nkey,
+				"d": d,
+				"arrival": arrival,
+				"margin": margin,
+				"ex": Utility.entry_x(nx, d),
+				"ey": Utility.entry_y(ny, d)
+			})
 
-	for di in range(4):
-		var d: int = _dir_order[di]
-		var nx: int = me_x + DIRS[d][0]
-		var ny: int = me_y + DIRS[d][1]
-		if not _is_walkable(nx, ny, dangerous_kuru_cells):
-			continue
-		var dscore := _detector.bomb_danger_score(nx, ny, bomb_container)
-		if dscore < 0:
-			continue
-		var key := Vector2i(nx, ny)
-		visited[key] = 1
-		queue.append({"x": nx, "y": ny, "dir": d, "depth": 1})
+		# 猶予フレームの降順でソート（キューへの積み順が探索優先度に影響）
+		neighbors.sort_custom(func(a, b): return a["margin"] > b["margin"])
 
-	while queue.size() > 0:
-		var node: Dictionary = queue.pop_front()
-		var x: int = node["x"]
-		var y: int = node["y"]
-		var dir: int = node["dir"]
-		var depth: int = node["depth"]
-		var dist: int = abs(enemy_x - x) + abs(enemy_y - y)
-		var dscore := _detector.bomb_danger_score(x, y, bomb_container)
+		for nb in neighbors:
+			if not parent.has(nb["nkey"]):
+				parent[nb["nkey"]] = Vector2i(cur["mx"], cur["my"])
+			queue.append({
+				"x": nb["ex"], "y": nb["ey"],
+				"mx": nb["nx"], "my": nb["ny"],
+				"dir": nb["d"],
+				"elapsed": nb["arrival"],
+				"depth": cur["depth"] + 1
+			})
 
-		var better := false
-		if dist < fallback_dist:
-			better = true
-		elif dist == fallback_dist and depth < fallback_depth:
-			better = true
-		elif dist == fallback_dist and depth == fallback_depth and dscore > fallback_danger:
-			better = true
-		if better:
-			fallback_dist = dist
-			fallback_depth = depth
-			fallback_danger = dscore
-			fallback_dir = dir
+	# 永続安全マスが見つからなかった場合、経過フレーム最大のマスを採用
+	if best_key != "":
+		return {
+			"safe": false,
+			"chosen_key": best_key,
+			"parent": parent,
+			"dest_hit": best_hit
+		}
 
-		if depth >= MAX_DEPTH:
-			continue
-
-		for di2 in range(4):
-			var d2: int = _dir_order[di2]
-			var nx2: int = x + DIRS[d2][0]
-			var ny2: int = y + DIRS[d2][1]
-			if not _is_walkable(nx2, ny2, dangerous_kuru_cells):
-				continue
-			var dscore2 := _detector.bomb_danger_score(nx2, ny2, bomb_container)
-			if dscore2 < 0:
-				continue
-			var key2 := Vector2i(nx2, ny2)
-			if visited.has(key2):
-				continue
-			visited[key2] = depth + 1
-			queue.append({"x": nx2, "y": ny2, "dir": dir, "depth": depth + 1})
-
-	return fallback_dir
+	# 一切展開できなかった場合
+	return {
+		"safe": false,
+		"chosen_key": "",
+		"parent": parent,
+		"dest_hit": -1
+	}
 
 
-# ── 内部ヘルパー ──────────────────────────────────────────────
-# 敵がCOMの爆弾射程内にいるか（同行か同列で距離 <= power）
-func _is_enemy_in_bomb_range(me_x: int, me_y: int, ex: int, ey: int, power: int) -> bool:
-	if me_x == ex and abs(me_y - ey) <= power and not _is_blast_blocked(me_x, me_y, ex, ey):
-		return true
-	if me_y == ey and abs(me_x - ex) <= power and not _is_blast_blocked(me_x, me_y, ex, ey):
-		return true
-	return false
+# ====================================================================
+#  外部公開用
+# ====================================================================
+func get_last_escape_path() -> Array:
+	return _debug_last_escape_path
 
-
-func _is_blast_blocked(from_x: int, from_y: int, to_x: int, to_y: int) -> bool:
-	if from_x != to_x and from_y != to_y:
-		return true
-	var step_x: int = sign(to_x - from_x)
-	var step_y: int = sign(to_y - from_y)
-	var x: int = from_x + step_x
-	var y: int = from_y + step_y
-	while x != to_x or y != to_y:
-		if _is_hard_block(x, y):
-			return true
-		x += step_x
-		y += step_y
-	return false
-
-
-# フィールド内かつブロックなし かつ 危険なくる不在 であることを確認する。
-# BFS ノード生成・展開の両方で使う共通ゲートウェイ。
-func _is_walkable(x: int, y: int, dangerous_kuru_cells: Dictionary) -> bool:
-	if x < 0 or x >= Constants.FIELD_COLS or y < 0 or y >= Constants.FIELD_ROWS:
-		return false
-	# 壁・ブロックチェック
-	if _is_hard_block(x, y):
-		return false
-	# 危険なくるがいるマスは回避
-	if _has_dangerous_kuru_at_cached(x, y, dangerous_kuru_cells):
-		return false
-	return true
-
-
-func _build_dangerous_kuru_cell_cache(kuru_container: Node) -> Dictionary:
-	var cache: Dictionary = {}
-	if kuru_container == null:
-		return cache
-	for kuru_node in kuru_container.get_children():
-		var kd: Dictionary = kuru_node.data
-		var cnt: int = int(kd.get("count", ComDangerDetector.KURU_DANGER_FRAMES))
-		if cnt >= ComDangerDetector.KURU_DANGER_FRAMES:
-			continue
-		var cell := Vector2i(
-			int(kd.get("masu_x", -9999)),
-			int(kd.get("masu_y", -9999))
-		)
-		cache[cell] = true
-	return cache
-
-
-func _has_dangerous_kuru_at_cached(x: int, y: int, dangerous_kuru_cells: Dictionary) -> bool:
-	return dangerous_kuru_cells.has(Vector2i(x, y))
-
-
-# ブロック（壊せない壁 or 壊せるブロック）ならば true を返す。
-# ソフトブロック（SOFT_BLOCK）は爆弾で壊れるが、逃走中には通り抜けられない。
-func _is_hard_block(x: int, y: int) -> bool:
-	var masu: Array = GameState.masu
-	if masu.size() <= y or masu[y].size() <= x:
-		return false  # masu 未初期化なら安全側（通れる）と見なす
-	return masu[y][x].kind != Enums.MasuKind.BROKEN
+func get_last_approach_path() -> Array:
+	return _debug_last_approach_path

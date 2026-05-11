@@ -1,0 +1,11 @@
+{
+  "name": "カミ",
+  "speed": 0,
+  "dankai": 5,
+  "kankaku": 0,
+  "speed_up": 1,
+  "shot_up": 0,
+  "power_up": 0,
+  "sheet_path": "res://assets/images/kuru/cm_kuru019.png",
+  "draw_offset_x": 16.0
+}

@@ -1,0 +1,11 @@
+{
+  "name": "升ンガン",
+  "speed": 50,
+  "dankai": 4,
+  "kankaku": 0,
+  "speed_up": 5,
+  "shot_up": 16,
+  "power_up": 16,
+  "sheet_path": "res://assets/images/kuru/cm_kuru999.png",
+  "draw_offset_x": 18.0
+}

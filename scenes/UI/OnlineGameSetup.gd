@@ -62,8 +62,8 @@ static func _apply_my_stats(my_idx: int, my: Dictionary) -> void:
 	pm["item_shot"]  = pm["max_shot"]
 	pm["item_power"] = pm["max_power"]
 
-	pm["speed"]        = Constants.PLAYER_DEFAULT_SPEED + pm["item_speed"] * Constants.PLAYER_SPEED_UP
-	pm["kuru_speed"]   = kdef["speed"]
+	pm["speed"]        = (Constants.PLAYER_DEFAULT_SPEED + pm["item_speed"] * Constants.PLAYER_SPEED_UP) / 2
+	pm["kuru_speed"]   = Constants.kuru_speed_stat_to_move_speed(int(kdef["speed"]))
 	pm["kuru_dankai"]  = kdef["dankai"]
 	pm["kuru_kankaku"] = kdef["kankaku"]
 
@@ -90,7 +90,7 @@ static func _apply_peer_stats(my_idx: int, my: Dictionary) -> void:
 
 	if rs.is_empty():
 		# 相手のデータが未受信の場合は自分と同じ設定を使用
-		pr["kuru_speed"]   = kdef["speed"]
+		pr["kuru_speed"]   = Constants.kuru_speed_stat_to_move_speed(int(kdef["speed"]))
 		pr["kuru_dankai"]  = kdef["dankai"]
 		pr["kuru_kankaku"] = kdef["kankaku"]
 		for i in range(3):

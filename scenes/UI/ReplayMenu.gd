@@ -66,7 +66,7 @@ func _build_ui() -> void:
 	left.add_child(_back_btn)
 
 	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(280, 0)
+	right.custom_minimum_size = Vector2(240, 0)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(right)
 

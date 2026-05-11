@@ -31,6 +31,8 @@ func _build_ui() -> void:
 	var back_btn := Button.new()
 	back_btn.text = "戻る"
 	back_btn.focus_mode = Control.FOCUS_NONE
+	back_btn.shortcut_in_tooltip = false
+	back_btn.tooltip_text = "Esc"
 	back_btn.pressed.connect(_on_back)
 	root.add_child(back_btn)
 

@@ -49,10 +49,14 @@ func _build_ui() -> void:
 	# 2. ボタン生成（戻り値としてボタンを受け取れるようにするか、直接設定する）
 	var start_btn = _add_btn(action_row, "ゲームスタート", _on_start)
 	start_btn.shortcut = start_shortcut # ここでショートカットを割り当て
+	start_btn.shortcut_in_tooltip = false
+	start_btn.tooltip_text = "Enter"
 	
 	_add_btn(action_row, "リプレイ保存",   _on_replay_save)
 	_add_btn(action_row, "リプレイ読込",   _on_replay_load)
-	_add_btn(action_row, "戻る",           _on_back)
+	var back_btn = _add_btn(action_row, "戻る", _on_back)
+	back_btn.shortcut_in_tooltip = false
+	back_btn.tooltip_text = "Esc"
 	root.add_child(action_row)
 
 func _make_player_panel(parent: Control, pi: int, title: String) -> void:
@@ -103,7 +107,7 @@ func _make_player_panel(parent: Control, pi: int, title: String) -> void:
 			st["speed_base"], Constants.format_signed_bonus(st["speed_bonus"]),
 			st["power_base"], Constants.format_signed_bonus(st["power_bonus"]),
 			st["shot_base"], Constants.format_signed_bonus(st["shot_bonus"]),
-			st["kuru_speed"], st["kuru_dankai"], st["kuru_kankaku"] / 60.0
+			st["kuru_speed_stat"], st["kuru_dankai"], st["kuru_kankaku"] / 60.0
 		])
 
 	# アイテム
