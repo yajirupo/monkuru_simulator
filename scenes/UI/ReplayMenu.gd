@@ -168,6 +168,8 @@ func _build_slot_info_text(slot: int) -> String:
 	var jf := GameState.joutai_flag
 	if jf == Enums.JoutaiType.SINGLE_REPLAY_READ or jf == Enums.JoutaiType.SINGLE_REPLAY_WRITE:
 		return _build_single_info_text(path, slot)
+	if jf in [Enums.JoutaiType.VS_COM_REPLAY_READ, Enums.JoutaiType.VS_COM_REPLAY_WRITE]:
+		return _build_vs_com_info_text(path, slot)
 	return _build_vs_info_text(path, slot)
 
 func _get_replay_path(slot: int) -> String:
@@ -304,3 +306,67 @@ func _read_string(f: FileAccess, length: int) -> String:
 			end = i
 			break
 	return bytes.slice(0, end).get_string_from_utf8()
+
+# VS COM リプレイ用：明示フレーム数分の入力データをスキップ
+func _skip_vs_com_replay_input(f: FileAccess, frame_count: int) -> void:
+	var skip_bytes := clampi(frame_count, 0, Constants.MAX_REPLAY_FLAME - 1) * Constants.MAX_PLAYER
+	f.seek(mini(f.get_position() + skip_bytes, f.get_length()))
+
+# VS COM リプレイ情報表示
+func _build_vs_com_info_text(path: String, slot: int) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return "[b]Slot %02d[/b]\n読み込みに失敗しました。" % slot
+
+	if f.get_length() < VsComReplayManager.FORMAT_MAGIC.length() + 1:
+		f.close()
+		return "[b]Slot %02d[/b]\n未対応の古い VS COM リプレイです。" % slot
+	if f.get_buffer(VsComReplayManager.FORMAT_MAGIC.length()).get_string_from_ascii() != VsComReplayManager.FORMAT_MAGIC:
+		f.close()
+		return "[b]Slot %02d[/b]\n未対応の古い VS COM リプレイです。" % slot
+	var version := int(f.get_8())
+	if version != VsComReplayManager.FORMAT_VERSION:
+		f.close()
+		return "[b]Slot %02d[/b]\n未対応の VS COM リプレイ形式です。" % slot
+
+	var stage := int(f.get_8())
+	var player_count := int(f.get_8())
+
+	var players: Array[Dictionary] = []
+	for _i in range(player_count):
+		var pname := _read_string(f, 32)
+		var character := int(f.get_32())
+		var kuru_type := int(f.get_32())
+		for _j in range(3):
+			f.get_32()  # アイテム（表示では使わない）
+		players.append({
+			"name": pname,
+			"character": character,
+			"kuru_type": kuru_type,
+		})
+
+	var frame_count := int(f.get_32())
+	_skip_vs_com_replay_input(f, frame_count)
+	var chats := _read_chat_preview(f)
+	f.close()
+
+	var lines: Array[String] = []
+	lines.append("[b]Slot %02d[/b]" % slot)
+	lines.append("ステージ: %s" % GameState.get_stage_name(stage))
+	if players.size() > 0:
+		var human := players[0]
+		lines.append("%s: %s／%s" % [
+			human["name"],
+			Constants.get_character_name(human["character"]),
+			Constants.get_kuru_name(human["kuru_type"])
+		])
+	for i in range(1, players.size()):
+		var com := players[i]
+		lines.append("COM%d: %s／%s" % [
+			i,
+			Constants.get_character_name(com["character"]),
+			Constants.get_kuru_name(com["kuru_type"])
+		])
+	lines.append("")
+	lines.append(_format_chat_lines(chats))
+	return "\n".join(lines)

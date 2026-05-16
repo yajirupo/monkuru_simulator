@@ -17,6 +17,11 @@ var _lobby_panel: Control
 var _update_fns:  Array[Callable] = []
 var _waiting:     bool = false
 
+var _character_overlay: CharacterSelectOverlay = null
+var _kuru_overlay: KuruSelectOverlay = null
+var _item_overlay: ItemSelectOverlay = null
+var _stage_overlay: StageSelectOverlay = null
+
 # ═══════════════════════════════════════════════════════════
 # ライフサイクル
 # ═══════════════════════════════════════════════════════════
@@ -30,7 +35,7 @@ func _ready() -> void:
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.game_start_requested.connect(_on_game_start)
 	NetworkManager.remote_ready_updated.connect(_on_remote_ready_updated)
-
+	
 	_build_ui()
 	_update_display()
 
@@ -88,6 +93,8 @@ func _ensure_online_menu_defaults() -> void:
 		GameState.online_menu["kuru_type"] = 0
 	else:
 		GameState.online_menu["kuru_type"] = clampi(int(GameState.online_menu["kuru_type"]), 0, Constants.get_kuru_count() - 1)
+
+
 # ═══════════════════════════════════════════════════════════
 # UI 構築
 # ═══════════════════════════════════════════════════════════
@@ -102,6 +109,11 @@ func _build_ui() -> void:
 	_lbl(root, "── オンライン対戦メニュー ──")
 	root.add_child(HSeparator.new())
 
+	_ensure_character_overlay()
+	_ensure_kuru_overlay()
+	_ensure_item_overlay()
+	_ensure_stage_overlay()
+	
 	_build_main_panel(root)
 	_build_lobby_panel(root)
 
@@ -129,15 +141,15 @@ func _build_main_panel(root: Control) -> void:
 			_name_btn.text = GameState.online_menu.get("name", "Player") as String)
 
 	_main_panel.add_child(HSeparator.new())
-
+	
 	# ── サーバー起動 ─────────────────────────────────────────
-	_add_btn(_main_panel, "サーバーとして開始（ポート %d）" % NetworkManager.PORT, _on_start_server)
+	_add_btn(_main_panel, "サーバーとして開始", _on_start_server)
 
 	# ── クライアント接続 ─────────────────────────────────────
 	var client_row := HBoxContainer.new()
 	_ip_edit = LineEdit.new()
-	_ip_edit.placeholder_text    = "接続先 IP アドレス"
-	_ip_edit.text                = GameState.online_menu.get("ip_address", "127.0.0.1") as String
+	_ip_edit.placeholder_text    = "IPアドレス:ポート (例: 127.0.0.1:9999)"
+	_ip_edit.text                = GameState.online_menu.get("ip_address", "127.0.0.1:9999") as String
 	_ip_edit.custom_minimum_size = Vector2(150, 0)
 	_ip_edit.text_changed.connect(func(new_text: String): GameState.online_menu["ip_address"] = new_text)
 	client_row.add_child(_ip_edit)
@@ -147,16 +159,36 @@ func _build_main_panel(root: Control) -> void:
 	_main_panel.add_child(HSeparator.new())
 
 	# ── キャラ・くる ─────────────────────────────────────────
-	_arrow_row(_main_panel, "キャラ",
-		func(): return Constants.get_character_name(GameState.online_menu["character"]),
-		func(): GameState.online_menu["character"] = wrapi(GameState.online_menu["character"] - 1, 0, Constants.get_character_count()),
-		func(): GameState.online_menu["character"] = wrapi(GameState.online_menu["character"] + 1, 0, Constants.get_character_count()))
-
-	_arrow_row(_main_panel, "くる",
-		func(): return Constants.get_kuru_name(GameState.online_menu["kuru_type"]),
-		func(): GameState.online_menu["kuru_type"] = wrapi(GameState.online_menu["kuru_type"] - 1, 0, Constants.get_kuru_count()),
-		func(): GameState.online_menu["kuru_type"] = wrapi(GameState.online_menu["kuru_type"] + 1, 0, Constants.get_kuru_count()))
+	var char_row := HBoxContainer.new()
+	_lbl_w(char_row, "キャラ：", 110)
+	var bl := _mk_btn("◀")
+	bl.pressed.connect(func():
+		GameState.online_menu["character"] = wrapi(GameState.online_menu["character"] - 1, 0, Constants.get_character_count())
+		_update_display()
+	)
+	char_row.add_child(bl)
+	var name_btn := _mk_btn("")
+	name_btn.custom_minimum_size.x = 80
+	name_btn.pressed.connect(func():
+		_character_overlay.show_overlay(func(new_idx: int):
+			GameState.online_menu["character"] = new_idx
+			_update_display()
+		)
+	)
+	char_row.add_child(name_btn)
+	var br := _mk_btn("▶")
+	br.pressed.connect(func():
+		GameState.online_menu["character"] = wrapi(GameState.online_menu["character"] + 1, 0, Constants.get_character_count())
+		_update_display()
+	)
+	char_row.add_child(br)
+	_main_panel.add_child(char_row)
+	_update_fns.append(func(): name_btn.text = Constants.get_character_name(GameState.online_menu["character"]))
 	
+	_make_kuru_row(_main_panel,
+		func(): return GameState.online_menu["kuru_type"],
+		func(v: int): GameState.online_menu["kuru_type"] = v)
+		
 	_char_status_lbl = Label.new()
 	_char_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_main_panel.add_child(_char_status_lbl)
@@ -183,13 +215,26 @@ func _build_main_panel(root: Control) -> void:
 				GameState.online_menu["item_type"][slot] = wrapi(cur - 1, 0, ITEM_MAX),
 			func():
 				var cur: int = GameState.online_menu["item_type"][slot]
-				GameState.online_menu["item_type"][slot] = wrapi(cur + 1, 0, ITEM_MAX))
+				GameState.online_menu["item_type"][slot] = wrapi(cur + 1, 0, ITEM_MAX),
+			func():
+				_item_overlay.show_overlay(func(new_val: int):
+					GameState.online_menu["item_type"][slot] = new_val
+					_update_display()
+				)
+		)
 
 	_arrow_row(_main_panel, "ステージ",
 		func(): return GameState.get_stage_name(GameState.online_menu["stage"]),
 		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] - 1, 0, GameState.STAGE_COUNT),
-		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] + 1, 0, GameState.STAGE_COUNT))
-
+		func(): GameState.online_menu["stage"] = wrapi(GameState.online_menu["stage"] + 1, 0, GameState.STAGE_COUNT),
+		# ▼ 追加
+		func():
+			_stage_overlay.show_overlay(func(new_val: int):
+				GameState.online_menu["stage"] = new_val
+				_update_display()
+			)
+	)
+	
 	_main_panel.add_child(HSeparator.new())
 	var replay_row := HBoxContainer.new()
 	replay_row.add_theme_constant_override("separation", 8)
@@ -254,21 +299,32 @@ func _lbl_w(parent: Control, text: String, w: float) -> Label:
 	l.custom_minimum_size.x = w; return l
 
 func _arrow_row(parent: Control, label_text: String,
-		get_fn: Callable, dec_fn: Callable, inc_fn: Callable) -> void:
+		get_fn: Callable, dec_fn: Callable, inc_fn: Callable,
+		overlay_callback: Callable = Callable()) -> void:
 	var hbox := HBoxContainer.new()
 	_lbl_w(hbox, label_text + "：", 110)
 	var bl := _mk_btn("◀")
 	bl.pressed.connect(func(): dec_fn.call(); _update_display())
 	hbox.add_child(bl)
-	var vl := Label.new()
-	vl.custom_minimum_size.x = 80
-	vl.horizontal_alignment  = HORIZONTAL_ALIGNMENT_CENTER
-	hbox.add_child(vl)
+
+	# ★ オーバーレイ用コールバックがあれば Button、なければ Label
+	if overlay_callback.is_valid():
+		var val_btn := _mk_btn("")
+		val_btn.custom_minimum_size.x = 80
+		val_btn.pressed.connect(overlay_callback)
+		hbox.add_child(val_btn)
+		_update_fns.append(func(): val_btn.text = get_fn.call())
+	else:
+		var vl := Label.new()
+		vl.custom_minimum_size.x = 80
+		vl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hbox.add_child(vl)
+		_update_fns.append(func(): vl.text = get_fn.call())
+
 	var br := _mk_btn("▶")
 	br.pressed.connect(func(): inc_fn.call(); _update_display())
 	hbox.add_child(br)
 	parent.add_child(hbox)
-	_update_fns.append(func(): vl.text = get_fn.call())
 
 func _update_display() -> void:
 	for fn in _update_fns:
@@ -299,27 +355,38 @@ func _on_name_submitted(new_name: String) -> void:
 
 func _on_start_server() -> void:
 	NetworkManager.disconnect_all()
+	
+	# IP:ポート からポートだけ抽出（サーバーは待ち受けポート）
+	var parsed := _parse_ip_and_port(_ip_edit.text, 9999)
+	NetworkManager.port = parsed["port"]
+	
 	var err: String = NetworkManager.start_server()
 	if err != "":
 		_set_status("エラー: " + err); return
 	_waiting = true
 	_enter_lobby()
 	GameState.joutai_flag = Enums.JoutaiType.ONLINE_LOBBY
-	_set_status("待機中... ポート %d" % NetworkManager.PORT)
+	_set_status("待機中... ポート %d" % NetworkManager.port)
 
 func _on_start_client() -> void:
 	NetworkManager.disconnect_all()
-	var ip: String = _ip_edit.text.strip_edges()
+	
+	var raw: String = _ip_edit.text.strip_edges()
+	var parsed := _parse_ip_and_port(raw, 9999)
+	NetworkManager.port = parsed["port"]
+	var ip: String = parsed["ip"]
 	if ip == "":
 		ip = "127.0.0.1"
-	GameState.online_menu["ip_address"] = ip
+		
+	GameState.online_menu["ip_address"] = "%s:%d" % [ip, NetworkManager.port]
+	
 	var err: String = NetworkManager.connect_to_server(ip)
 	if err != "":
 		_set_status("エラー: " + err); return
 	_waiting = true
 	_enter_lobby()
 	GameState.joutai_flag = Enums.JoutaiType.ONLINE_LOBBY
-	_set_status("接続中... " + ip)
+	_set_status("接続中... %s:%d" % [ip, NetworkManager.port])
 
 func _on_ready_up() -> void:
 	NetworkManager.send_ready()
@@ -390,3 +457,75 @@ func _set_status(msg: String) -> void:
 func _backup_online_menu_for_replay() -> void:
 	# 保存時に参照するメニュー値を確定しておく
 	GameState.online_menu = GameState.online_menu.duplicate(true)
+
+
+# IPアドレス文字列 "192.168.1.6:12345" から IP とポートを抽出する。
+# ポートが省略された場合は default_port を返す。
+func _parse_ip_and_port(raw: String, default_port: int = 9999) -> Dictionary:
+	var parts := raw.split(":")
+	var ip: String
+	var port: int = default_port
+
+	if parts.size() >= 2:
+		ip = parts[0].strip_edges()
+		var port_str := parts[1].strip_edges()
+		if port_str.is_valid_int():
+			port = int(port_str)
+			if port <= 0 or port > 65535:
+				port = default_port
+	else:
+		ip = raw.strip_edges()
+
+	return { "ip": ip, "port": port }
+	
+# オーバーレイ生成
+func _ensure_character_overlay() -> void:
+	if _character_overlay == null:
+		_character_overlay = CharacterSelectOverlay.new()
+		add_child(_character_overlay)
+
+func _make_kuru_row(parent: Control, getter: Callable, setter: Callable) -> void:
+	var hbox := HBoxContainer.new()
+	_lbl_w(hbox, "くる：", 110)  # OnlineMenuはラベル幅110
+
+	var bl := _mk_btn("◀")
+	bl.pressed.connect(func():
+		setter.call(wrapi(getter.call() - 1, 0, Constants.get_kuru_count()))
+		_update_display()
+	)
+	hbox.add_child(bl)
+
+	var name_btn := _mk_btn("")
+	name_btn.custom_minimum_size.x = 80
+	name_btn.pressed.connect(func():
+		_kuru_overlay.show_overlay(func(new_idx: int):
+			setter.call(new_idx)
+			_update_display()
+		)
+	)
+	hbox.add_child(name_btn)
+
+	var br := _mk_btn("▶")
+	br.pressed.connect(func():
+		setter.call(wrapi(getter.call() + 1, 0, Constants.get_kuru_count()))
+		_update_display()
+	)
+	hbox.add_child(br)
+
+	parent.add_child(hbox)
+	_update_fns.append(func(): name_btn.text = Constants.get_kuru_name(getter.call()))
+
+func _ensure_kuru_overlay() -> void:
+	if _kuru_overlay == null:
+		_kuru_overlay = KuruSelectOverlay.new()
+		add_child(_kuru_overlay)
+
+func _ensure_item_overlay() -> void:
+	if _item_overlay == null:
+		_item_overlay = ItemSelectOverlay.new()
+		add_child(_item_overlay)
+
+func _ensure_stage_overlay() -> void:
+	if _stage_overlay == null:
+		_stage_overlay = StageSelectOverlay.new()
+		add_child(_stage_overlay)

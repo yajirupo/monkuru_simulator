@@ -1,5 +1,5 @@
 # GameObjectManager.gd
-# くる・爆弾の毎フレーム計算、描画順序の更新、ゲームオブジェクトのクリアを担当
+# くる・爆風の毎フレーム計算、描画順序の更新、ゲームオブジェクトのクリアを担当
 # res://scenes/Main/GameObjectManager.gd に配置
 
 class_name GameObjectManager
@@ -11,8 +11,7 @@ extends RefCounted
 var _kuru_container: Node2D
 var _bomb_container: Node2D
 var _hard_block_container: Node2D
-var _player_1p:      CharacterBody2D
-var _player_2p:      CharacterBody2D
+var _player_nodes:   Array[Node] = []
 var _field:          Node2D
 
 const HARD_BLOCK_SCENE: PackedScene = preload("res://scenes/HardBlock/HardBlock.tscn")
@@ -26,14 +25,12 @@ func setup(
 		kuru_container: Node2D,
 		bomb_container: Node2D,
 		hard_block_container: Node2D,
-		player_1p:      CharacterBody2D,
-		player_2p:      CharacterBody2D,
+		player_nodes:   Array[Node],
 		field:          Node2D) -> void:
 	_kuru_container = kuru_container
 	_bomb_container = bomb_container
 	_hard_block_container = hard_block_container
-	_player_1p      = player_1p
-	_player_2p      = player_2p
+	_player_nodes   = player_nodes
 	_field          = field
 
 
@@ -41,31 +38,37 @@ func setup(
 # 毎フレーム計算
 # ============================================================
 
-## くるの calc を呼び、終了したものを queue_free する
+## くるの calc を呼び、終了したものをコンテナから外して queue_free する
 func calc_kuru() -> void:
-	var to_remove := []
+	if _kuru_container == null:
+		return
+	var to_remove: Array[Node] = []
 	for kuru in _kuru_container.get_children():
+		if not is_instance_valid(kuru):
+			continue
 		if not kuru.kuru_calc():
 			to_remove.append(kuru)
 	for kuru in to_remove:
-		kuru.queue_free()
+		_release_child(_kuru_container, kuru)
 
-## 爆弾の calc を呼び、終了したものを queue_free する
+## 爆風の calc を呼び、終了したものをコンテナから外して queue_free する
 func calc_bomb() -> void:
-	var to_remove := []
+	if _bomb_container == null:
+		return
+	var to_remove: Array[Node] = []
 	for bomb in _bomb_container.get_children():
+		if not is_instance_valid(bomb):
+			continue
 		if not bomb.bomb_calc():
 			to_remove.append(bomb)
 	for bomb in to_remove:
-		bomb.queue_free()
-
+		_release_child(_bomb_container, bomb)
 
 
 func refresh_hard_blocks() -> void:
 	if _hard_block_container == null:
 		return
-	for child in _hard_block_container.get_children():
-		child.queue_free()
+	_free_children(_hard_block_container)
 
 	for y in range(Constants.FIELD_ROWS):
 		for x in range(Constants.FIELD_COLS):
@@ -90,10 +93,9 @@ func update_draw_order() -> void:
 		_bomb_container.z_index = 1
 
 	const BASE_Z := 10
-	if _player_1p and _player_1p.visible:
-		_player_1p.z_index = BASE_Z + int(_player_1p.position.y)
-	if _player_2p and _player_2p.visible:
-		_player_2p.z_index = BASE_Z + int(_player_2p.position.y)
+	for player_node in _player_nodes:
+		if player_node and player_node is Node2D and (player_node as Node2D).visible:
+			(player_node as Node2D).z_index = BASE_Z + int((player_node as Node2D).position.y)
 
 	if _kuru_container:
 		for kuru in _kuru_container.get_children():
@@ -105,11 +107,25 @@ func update_draw_order() -> void:
 # クリア
 # ============================================================
 
-## ゲーム終了時にくる・爆弾を全て削除する
+## ゲーム終了時にくる・爆風を全て削除する
 func clear_game_objects() -> void:
-	for child in _kuru_container.get_children():
-		child.queue_free()
-	for child in _bomb_container.get_children():
-		child.queue_free()
-	for child in _hard_block_container.get_children():
-		child.queue_free()
+	_free_children(_kuru_container)
+	_free_children(_bomb_container)
+	_free_children(_hard_block_container)
+
+
+func _free_children(container: Node) -> void:
+	if container == null:
+		return
+	for child in container.get_children():
+		_release_child(container, child)
+
+
+func _release_child(container: Node, child: Node) -> void:
+	if child == null or not is_instance_valid(child):
+		return
+	if child.has_method("prepare_for_free"):
+		child.call("prepare_for_free")
+	if child.get_parent() == container:
+		container.remove_child(child)
+	child.queue_free()

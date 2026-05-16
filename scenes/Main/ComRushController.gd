@@ -15,7 +15,7 @@ extends RefCounted
 #   reset()                      : ゲームリセット時の状態初期化
 #   is_active() -> bool          : ラッシュ中かどうか
 #   get_dir() -> int             : 現在のラッシュ方向（非アクティブ時は -1）
-#   should_start_rush(op)        : ラッシュ開始条件を満たすか
+#   should_start_rush(pnum, op)  : ラッシュ開始条件を満たすか
 #   can_safely_rush(dir)         : 指定方向への突撃が安全か
 #   start_rush(dir)              : ラッシュを開始する
 #   process_rush(keys, pnum)     : ラッシュ中キーを keys に書き込み
@@ -29,7 +29,6 @@ var _danger_detector: ComDangerDetector
 var _rush_active: bool = false
 var _rush_dir: int = -1
 var _rush_last_shot_cell: Vector2i = Vector2i(-1, -1)   # 最後に発射したマスのセル座標
-var _last_kuru_explosion_frame: int = -9999              # 将来の活用のために保持
 
 const BOMB_KEY: int = 4
 
@@ -42,7 +41,6 @@ func reset() -> void:
 	_rush_active = false
 	_rush_dir = -1
 	_rush_last_shot_cell = Vector2i(-1, -1)
-	_last_kuru_explosion_frame = -9999
 
 
 func is_active() -> bool:
@@ -58,8 +56,8 @@ func get_dir() -> int:
 # ====================================================================
 
 ## ラッシュ開始条件を満たすか
-func should_start_rush(op_estimated: Dictionary) -> bool:
-	var p: Dictionary = GameState.player[1]
+func should_start_rush(player_num: int, op_estimated: Dictionary) -> bool:
+	var p: Dictionary = GameState.player[player_num]
 	if p["kuru_kankaku"] != 0:  # 発射間隔が 0.0 秒でないとラッシュはできない
 		return false
 	if p["kuru_speed"] >= Constants.kuru_speed_stat_to_move_speed(3):  # 速すぎるくるはラッシュに不向き

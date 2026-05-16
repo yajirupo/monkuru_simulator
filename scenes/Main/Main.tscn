@@ -13,10 +13,35 @@ script = ExtResource("1")
 [node name="HardBlockContainer" type="Node2D" parent="." unique_id=1900010001]
 
 [node name="Player1P" parent="." unique_id=1179732106 instance=ExtResource("3")]
+player_num = null
 
 [node name="Player2P" parent="." unique_id=1671792223 instance=ExtResource("3")]
 visible = false
 player_num = 1
+
+[node name="Player3P" parent="." unique_id=1671792224 instance=ExtResource("3")]
+visible = false
+player_num = 2
+
+[node name="Player4P" parent="." unique_id=1671792225 instance=ExtResource("3")]
+visible = false
+player_num = 3
+
+[node name="Player5P" parent="." unique_id=1671792226 instance=ExtResource("3")]
+visible = false
+player_num = 4
+
+[node name="Player6P" parent="." unique_id=1671792227 instance=ExtResource("3")]
+visible = false
+player_num = 5
+
+[node name="Player7P" parent="." unique_id=1671792228 instance=ExtResource("3")]
+visible = false
+player_num = 6
+
+[node name="Player8P" parent="." unique_id=1671792229 instance=ExtResource("3")]
+visible = false
+player_num = 7
 
 [node name="KuruContainer" type="Node2D" parent="." unique_id=1074535411]
 

@@ -100,25 +100,26 @@ func _load_data() -> void:
 	var vcm: Dictionary = GameData.vs_com_menu
 	var vs_com_menu_data: Dictionary = data.get("vs_com_menu", {})
 	vcm["stage"] = GameState.clamp_stage(int(vs_com_menu_data.get("stage", vcm["stage"])))
+	vcm["com_count"] = clampi(int(vs_com_menu_data.get("com_count", vcm.get("com_count", 1))), 1, Constants.MAX_PLAYER - 1)
 
 	var vcm_name = vs_com_menu_data.get("name", vcm["name"])
 	if typeof(vcm_name) == TYPE_ARRAY:
-		for j in range(min(2, vcm_name.size())):
+		for j in range(min(Constants.MAX_PLAYER, vcm_name.size())):
 			vcm["name"][j] = str(vcm_name[j])
 
 	var vcm_player_type = vs_com_menu_data.get("player_type", vcm["player_type"])
 	if typeof(vcm_player_type) == TYPE_ARRAY:
-		for j in range(min(2, vcm_player_type.size())):
+		for j in range(min(Constants.MAX_PLAYER, vcm_player_type.size())):
 			vcm["player_type"][j] = int(vcm_player_type[j])
 
 	var vcm_kuru_type = vs_com_menu_data.get("kuru_type", vcm["kuru_type"])
 	if typeof(vcm_kuru_type) == TYPE_ARRAY:
-		for j in range(min(2, vcm_kuru_type.size())):
+		for j in range(min(Constants.MAX_PLAYER, vcm_kuru_type.size())):
 			vcm["kuru_type"][j] = int(vcm_kuru_type[j])
 
 	var vcm_item_type = vs_com_menu_data.get("item_type", vcm["item_type"])
 	if typeof(vcm_item_type) == TYPE_ARRAY:
-		for j in range(min(2, vcm_item_type.size())):
+		for j in range(min(Constants.MAX_PLAYER, vcm_item_type.size())):
 			if typeof(vcm_item_type[j]) == TYPE_ARRAY:
 				for i in range(min(3, vcm_item_type[j].size())):
 					vcm["item_type"][j][i] = int(vcm_item_type[j][i])
@@ -184,6 +185,7 @@ func _save_data() -> void:
 		"vs_com_menu": {
 			"name": GameData.vs_com_menu["name"].duplicate(),
 			"stage": GameState.clamp_stage(GameData.vs_com_menu["stage"]),
+			"com_count": clampi(int(GameData.vs_com_menu.get("com_count", 1)), 1, Constants.MAX_PLAYER - 1),
 			"player_type": GameData.vs_com_menu["player_type"].duplicate(),
 			"kuru_type": GameData.vs_com_menu["kuru_type"].duplicate(),
 			"item_type": GameData.vs_com_menu["item_type"].duplicate(true),
@@ -233,13 +235,14 @@ func _set_defaults() -> void:
 	vm["stage"] = 0
 
 	var vcm: Dictionary = GameData.vs_com_menu
-	for j in range(2):
-		vcm["name"][j]          = "1P" if j == 0 else "COM"
+	for j in range(Constants.MAX_PLAYER):
+		vcm["name"][j]          = "1P" if j == 0 else "COM%d" % j
 		vcm["player_type"][j]   = Enums.PlayerType.YAMI
 		vcm["kuru_type"][j]     = Enums.KuruType.KIHON
 		for i in range(3):
 			vcm["item_type"][j][i] = Enums.ItemType.NO_ITEM
 	vcm["stage"] = 0
+	vcm["com_count"] = 1
 
 	for i in range(8):
 		GameState.use_key_single[i] = DEFAULT_KEYS_SINGLE[i]

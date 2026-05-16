@@ -1,46 +1,27 @@
 {
   "name": "ヤミ",
-  "max_stats": {
-    "speed": 6,
-    "shot": 5,
-    "power": 5
-  },
+  "max_stats": { "speed": 6, "shot": 5, "power": 5 },
   "sprites": {
-    "stand_d": {
-      "suffix": "StandD",
-      "cols": 9
-    },
-    "stand_u": {
-      "suffix": "StandU",
-      "cols": 9
-    },
-    "stand_l": {
-      "suffix": "StandL",
-      "cols": 9
-    },
-    "stand_r": {
-      "suffix": "StandR",
-      "cols": 9
-    },
-    "run_d": {
-      "suffix": "RunD",
-      "cols": 6
-    },
-    "run_u": {
-      "suffix": "RunU",
-      "cols": 6
-    },
-    "run_l": {
-      "suffix": "RunL",
-      "cols": 6
-    },
-    "run_r": {
-      "suffix": "RunR",
-      "cols": 6
-    },
-    "death": {
-      "suffix": "Death",
-      "cols": 20
-    }
+	"stand_d": { "suffix": "StandD", "cols": 9 },
+	"stand_u": { "suffix": "StandU", "cols": 9 },
+	"stand_l": { "suffix": "StandL", "cols": 9 },
+	"stand_r": { "suffix": "StandR", "cols": 9 },
+	"run_d": { "suffix": "RunD", "cols": 6 },
+	"run_u": { "suffix": "RunU", "cols": 6 },
+	"run_l": { "suffix": "RunL", "cols": 6 },
+	"run_r": { "suffix": "RunR", "cols": 6 },
+	"win": { "suffix": "Win", "cols": 17 },
+	"lose": { "suffix": "Lose", "cols": 29 },
+	"appear": { "suffix": "Appear", "cols": 23 },
+	"death": { "suffix": "Death", "cols": 20 },
+	"revive": { "suffix": "Revive", "cols": 14 },
+	"nabe_stand_d": { "suffix": "NabeStandD", "cols": 9 },
+	"nabe_stand_u": { "suffix": "NabeStandU", "cols": 9 },
+	"nabe_stand_l": { "suffix": "NabeStandL", "cols": 9 },
+	"nabe_stand_r": { "suffix": "NabeStandR", "cols": 9 },
+	"nabe_run_d": { "suffix": "NabeRunD", "cols": 6 },
+	"nabe_run_u": { "suffix": "NabeRunU", "cols": 6 },
+	"nabe_run_l": { "suffix": "NabeRunL", "cols": 6 },
+	"nabe_run_r": { "suffix": "NabeRunR", "cols": 6 }
   }
 }

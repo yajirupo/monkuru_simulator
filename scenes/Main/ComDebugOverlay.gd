@@ -17,8 +17,13 @@ func _ready() -> void:
 	visible = false
 	z_index = 4090   # 最前面表示
 
+var _redraw_interval: int = 6
+
 func _process(_delta: float) -> void:
-	queue_redraw()
+	if not visible:
+		return
+	if GameState.count % _redraw_interval == 0:
+		queue_redraw()
 
 func _draw() -> void:
 	if not visible or com_think == null:

@@ -11,6 +11,8 @@
 #       ├── ChatLabel0 (Label)
 #       ├── ChatLabel1 (Label)
 #       └── ChatLabel2 (Label)
+# 
+# 背景テクスチャをキャッシュし、毎フレームの再ロードを回避
 
 extends Node2D
 
@@ -42,8 +44,18 @@ func _get_atlas(path: String, col: int, row: int, w: int, h: int) -> AtlasTextur
 @onready var chat_display:   Node2D       = $ChatDisplay
 
 
-func _ready() -> void:
-	pass
+# ============================================================
+# 背景テクスチャキャッシュ
+# ============================================================
+var _cached_bg_path: String = ""
+var _cached_bg_tex: Texture2D = null
+
+## 背景テクスチャをキャッシュ付きで取得する
+func _get_or_load_bg(path: String) -> Texture2D:
+	if path != _cached_bg_path:
+		_cached_bg_tex = ImageManager.get_image(path)
+		_cached_bg_path = path
+	return _cached_bg_tex
 
 
 # ============================================================
@@ -52,11 +64,6 @@ func _ready() -> void:
 # ============================================================
 const CIRCLE_X: Array[int] = [474, 478, 486, 495, 502, 503, 498, 490]
 const CIRCLE_Y: Array[int] = [440, 432, 427, 429, 436, 445, 453, 457]
-
-# ステータス画像インデックス
-# img_status[0]=火力ON  [1]=くる数ON  [2]=速度ON
-#             [3]=火力OFF [4]=くる数OFF [5]=速度OFF
-# → TextureRect / Sprite2D の texture をスクリプトから差し替える
 
 # アイテムアイコンX間隔
 const ITEM_SPACING: int = 42
@@ -67,13 +74,14 @@ const ITEM_SPACING: int = 42
 # void fieldDisp() の移植
 # ============================================================
 func field_disp() -> void:
-	# 背景切り替え（シングル用）
-	var bg := _safe_load(_single_stage_bg_path())
+	# 背景切り替え（シングル用）→ キャッシュ利用
+	var bg_path := _single_stage_bg_path()
+	var bg := _get_or_load_bg(bg_path)
 	if bg and back_ground:
 		back_ground.texture = bg
 
 	_reset_item_sprites()
-	_draw_items_single()
+	_draw_items_single_for(0)
 	_draw_chat()
 	_draw_status_single()
 
@@ -83,8 +91,9 @@ func field_disp() -> void:
 # void fieldDisp2() の移植
 # ============================================================
 func field_disp2() -> void:
-	# 背景切り替え（VS用）
-	var bg := _safe_load(_vs_stage_bg_path())
+	# 背景切り替え（VS用）→ キャッシュ利用
+	var bg_path := _vs_stage_bg_path()
+	var bg := _get_or_load_bg(bg_path)
 	if bg and back_ground:
 		back_ground.texture = bg
 
@@ -98,29 +107,6 @@ func field_disp2() -> void:
 		_draw_status_vs(j)
 
 	_draw_chat()
-
-
-# ============================================================
-# アイテムアイコン描画（シングル）
-# DrawGraph(316+42*i, 425, img_crItem[...], TRUE)
-# ============================================================
-func _draw_items_single() -> void:
-	var p: Dictionary = GameState.player[0]
-	for i in range(3):
-		var sprite: Sprite2D = item_display.get_node_or_null("P0Item%d" % i)
-		if sprite == null:
-			continue
-		var item: int = p["cr_item"][i]
-		if item != Enums.ItemType.NO_ITEM:
-			# crItem.png: 4枚横並び 32x32
-			# NO_ITEM=0,ROCKET=1,INVISIBLE=2,SHOES=3,BROTHER=4 → インデックスは item-1
-			var tex := _get_transparent("res://assets/images/others/crItem.png", item - 1, 0, 32, 32)
-			sprite.texture = tex
-			sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			sprite.position = Vector2(317 + ITEM_SPACING * i + 16, 425 + 16)
-			sprite.visible = true
-		else:
-			sprite.visible = false
 
 
 # ============================================================
@@ -258,8 +244,6 @@ func _set_circle_sprite(parent: Node, node_name: String, pos: Vector2, tex_idx: 
 # ============================================================
 # 背景テクスチャ読み込み
 # ============================================================
-func _safe_load(path: String) -> Texture2D:
-	return ImageManager.get_image(path)
 
 # ── 黒色を透明に変換 ──────────────────────────────────────
 func _make_transparent_atlas(path: String, col: int, row: int, w: int, h: int) -> ImageTexture:
@@ -279,7 +263,9 @@ func _get_transparent(path: String, col: int, row: int, w: int, h: int) -> Image
 # 練習モードの背景 + 自分のステータスのみ表示
 # ============================================================
 func field_disp_online(my_idx: int) -> void:
-	var bg := _safe_load(_single_stage_bg_path())
+	# 背景 → キャッシュ利用
+	var bg_path := _single_stage_bg_path()
+	var bg := _get_or_load_bg(bg_path)
 	if bg and back_ground:
 		back_ground.texture = bg
 

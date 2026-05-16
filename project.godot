@@ -18,6 +18,7 @@ config/name="monkuru_simulator"
 config/description="モンスターくるくるのシミュレータ"
 run/main_scene="res://scenes/Main/Main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
+boot_splash/image="uid://0qmjjk6yk5ho"
 config/icon="uid://vh6b6o4thhq3"
 
 [autoload]
@@ -45,7 +46,6 @@ gdscript/warnings/narrowing_conversion=0
 
 window/size/viewport_width=640
 window/size/viewport_height=480
-window/size/resizable=false
 window/stretch/mode="canvas_items"
 
 [rendering]

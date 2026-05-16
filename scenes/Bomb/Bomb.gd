@@ -74,5 +74,15 @@ func _check_play_sound() -> void:
 	if data["count"] == 0:
 		SoundManager.play_bomb()
 
+
+func prepare_for_free() -> void:
+	var sp: Sprite2D = get_node_or_null("CenterSprite")
+	if sp:
+		sp.texture = null
+	_bomb1_tex = null
+	_bomb2_frames.clear()
+	data.clear()
+
+
 func _sync_position() -> void:
 	position = Vector2(Constants.MAP_LEFT_SIDE * 0.1, Constants.MAP_UP_SIDE * 0.1)

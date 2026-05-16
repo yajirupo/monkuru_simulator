@@ -74,6 +74,14 @@ func get_key(godot_key_code: int) -> int:
 		return 0
 	return key[dx]
 
+func clear_gameplay_key_counters(godot_key_codes: Array) -> void:
+	# READY?/APPEAR 中の人間プレイヤー操作はゲーム入力として扱わない。
+	# ESC はメニュー制御用なので、プレイヤー操作キーに割り当てられていても残す。
+	for godot_key_code in godot_key_codes:
+		var dx: int = _godot_to_dx.get(int(godot_key_code), -1)
+		if dx >= 0 and dx < key.size() and dx != KEY_INPUT_ESCAPE:
+			key[dx] = 0
+
 func update_use_keys() -> void:
 	match GameState.joutai_flag:
 		Enums.JoutaiType.SINGLE_GAME:

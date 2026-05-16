@@ -26,6 +26,7 @@ const DEFAULT_CHARACTER_DEF := {
 		"run_l": {"suffix": "RunL", "cols": 6},
 		"run_r": {"suffix": "RunR", "cols": 6},
 		"death": {"suffix": "Death", "cols": 20},
+		"appear": {"suffix": "Appear", "cols": 23},
 	},
 }
 
@@ -334,4 +335,4 @@ const KURU_DANKAI_TIME := 60
 # ============================================================
 
 const FPS        := 60
-const MAX_PLAYER := 2
+const MAX_PLAYER := 8

@@ -6,12 +6,12 @@ extends Node
 #  COM の危険予測・危険度マップ管理クラス
 #
 #  【役割】
-#   フィールド上の爆弾 (Bomb) と くる (Kuru) の爆発予測を行い、
+#   フィールド上の爆風 (Bomb) と くる (Kuru) の爆発予測を行い、
 #   各マスの「被弾開始までのフレーム数」を計算して危険度マップとして保持する。
 #
 #  【主な機能】
-#   ・既存の爆弾の危険情報を参照し、危険マップに登録する
-#   ・くるが現在の爆弾の爆風に巻き込まれて早期爆発するかどうかを判定する
+#   ・既存の爆風の危険情報を参照し、危険マップに登録する
+#   ・くるが現在の爆風に巻き込まれて早期爆発するかどうかを判定する
 #   ・くるが壁に衝突して早期爆発、または寿命で爆発する場合の爆発位置と時刻を計算する
 #   ・得られた爆発を危険マップに反映する
 #
@@ -26,14 +26,14 @@ extends Node
 #   EARLY_EXPLOSION_THRESHOLD : 壁衝突時に爆発する残り寿命の閾値 (180 フレーム)
 #
 #  【注意】
-#   くる同士の連鎖誘爆は考慮しない（計算量削減のため）。爆弾との誘爆のみ判定する。
+#   くる同士の連鎖誘爆は考慮しない（計算量削減のため）。爆風による誘爆のみ判定する。
 # ====================================================================
 
 # --- 危険度マップ本体（外部から問い合わせ可能） ---
 var _danger_map: Array = []          # 座標系: [x][y] (x: 0..17, y: 0..11)
 
 # --- 外部から注入されるコンテナ ---
-var _bomb_container: Node = null     # 爆弾ノードの親
+var _bomb_container: Node = null     # 爆風ノードの親
 var _kuru_container: Node = null     # くるノードの親
 var _field_masu: Array = []          # フィールドのマス情報 (壁かどうかなど)
 
@@ -68,7 +68,7 @@ func _reset_map() -> void:
 #  メインエントリ：毎フレーム呼ばれる
 # ====================================================================
 #  処理の流れ：
-#   1. 既存の爆弾 (Bomb) を危険マップに登録する
+#   1. 既存の爆風 (Bomb) を危険マップに登録する
 #   2. 各くるについて、危険マップを参照しながら爆発判定を行い、
 #      その爆発を逐次に危険マップに追加する
 #   3. くるを踏んで自爆することを防ぐため、赤くなりかけているくる周辺のマスの危険度を超高くする
@@ -87,12 +87,18 @@ func build_event_list(bomb_container: Node, kuru_container: Node) -> void:
 	#    （危険マップは逐次更新され、後続のくるの誘爆判定にも使われる）
 	if _kuru_container:
 		for _pass in range(5): # 誘爆を 5 段階まで考慮
+			var changed := false
 			for kuru in _kuru_container.get_children():
-				# くるの爆発計算（現在の危険マップ全体を参照し、爆弾＋既に計算したくるの爆発を考慮）
+				# くるの爆発計算（現在の危険マップ全体を参照し、爆風＋既に計算したくるの爆発を考慮）
 				var explosion = _compute_kuru_explosion(kuru, _danger_map)
 				if not explosion.is_empty():
+					var prev = _danger_map[explosion["bomb_x"]][explosion["bomb_y"]]
 					_register_kuru_explosion(explosion["bomb_x"], explosion["bomb_y"],
 											explosion["power"], explosion["explosion_frame"])
+					if _danger_map[explosion["bomb_x"]][explosion["bomb_y"]] < prev:
+						changed = true
+			if not changed:
+				break
 	
 	# 3. くるを踏んで自爆してしまうことの抑制
 	if _kuru_container:
@@ -116,11 +122,11 @@ func build_event_list(bomb_container: Node, kuru_container: Node) -> void:
 
 
 # --------------------------------------------------------------------
-# 既存の爆弾 (Bomb) を危険マップに登録する
+# 既存の 1 マス分の爆風 (Bomb) を危険マップに登録する
 # count 値に応じて被弾開始フレームを計算してマップに記録する
 # --------------------------------------------------------------------
 func _register_bomb_danger(bomb: Node) -> void:
-	if not bomb.has_method("get_data") and not "data" in bomb:
+	if not "data" in bomb:
 		return
 	var data: Dictionary = bomb.data
 	var bx: int = data["masu_x"]
@@ -128,7 +134,7 @@ func _register_bomb_danger(bomb: Node) -> void:
 	if bx < 0 or bx >= Constants.FIELD_COLS or by < 0 or by >= Constants.FIELD_ROWS:
 		return
 	var count: int = data["count"]
-	# count が BOMB_SPREAD_TIME を超えている爆弾はすでに消えているので無視
+	# count が BOMB_SPREAD_TIME を超えている爆風はすでに消えているので無視
 	if count > Constants.BOMB_SPREAD_TIME:
 		return
 	# count の符号から被弾開始フレームを計算（負の値なら未来、正の値なら現在危険）
@@ -146,18 +152,18 @@ func _register_bomb_danger(bomb: Node) -> void:
 #   1. くるがすでに爆発寸前なら即爆発とみなす
 #   2. 壁があるかどうかを実際の Kuru.gd と同じロジックで判定し、
 #      衝突位置と衝突フレームを求める
-#   3. 爆弾専用マップと照合し、くるが移動経路上で被弾するか調べる
+#   3. 爆風専用マップと照合し、くるが移動経路上で被弾するか調べる
 #      被弾した場合は被弾フレーム + 1 を爆発フレーム候補とする
 #   4. 引火がなければ、壁衝突 or 寿命で爆発するタイミングを決定する
 #   5. 最終的な爆発フレームと爆心地 (bomb_x, bomb_y) を返す
 #
 #  【引火判定の詳細】
-#   くるの将来の移動経路を辿り、各区間のマスが爆弾の危険に曝される時間帯と重なるか調べる。
+#   くるの将来の移動経路を辿り、各区間のマスが爆風の危険に曝される時間帯と重なるか調べる。
 #   重なっていれば、そのマスに入った瞬間 or 爆風が到達した瞬間のうち遅い方で被弾し、
 #   次のフレームで爆発するとみなす。
 # ====================================================================
 func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
-	if not kuru.has_method("get_data") and not "data" in kuru:
+	if not "data" in kuru:
 		return {}
 	var data: Dictionary = kuru.data
 
@@ -274,14 +280,14 @@ func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
 		has_wall = false
 		collision_frame = 999999
 
-	# ----- 爆弾による引火判定 -----
+	# ----- 爆風による引火判定 -----
 	var chain_explosion_frame: int = 999999   # 引火爆発までのフレーム（大きい値で初期化）
 	var cur_t: int = 0
 	var cur_x: int = start_x
 	var cur_y: int = start_y
 	var moving: bool = true
 
-	# くるの移動経路を区間に区切って、各マスで爆弾の危険と重ならないか調べる
+	# くるの移動経路を区間に区切って、各マスで爆風の危険と重ならないか調べる
 	while cur_t < natural_lifespan and moving:
 		# 現在いるマス
 		var cur_cell := Utility.world_to_cell(cur_x, cur_y)
@@ -330,7 +336,7 @@ func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
 					if t_boundary < next_t:
 						next_t = t_boundary
 
-		# この区間内に爆弾の危険があるか調べる
+		# この区間内に爆風の危険があるか調べる
 		var t_enter: int = cur_t          # 区間開始フレーム
 		var t_exit: int = next_t - 1      # 区間終了フレーム（次の境界の直前）
 		if t_enter <= t_exit:
@@ -355,7 +361,7 @@ func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
 			# 次の位置を計算（各方向に応じて座標を進める）
 			var elapsed: int = cur_t
 			var d = Utility.dir_to_vec(move_muki)
-			cur_x = start_x + d.x * move_per_frame * elapsed
+			cur_x = start_x + d.x * move_per_frame * elapsed # 飛び越しはない
 			cur_y = start_y + d.y * move_per_frame * elapsed
 
 	# 壁に停止後も、寿命まで同じマスにいるので危険チェック
@@ -382,8 +388,8 @@ func _compute_kuru_explosion(kuru: Node, danger_map: Array) -> Dictionary:
 	# 壁衝突時の特殊処理（引火していなければ）
 	if has_wall and chain_explosion_frame > natural_lifespan:
 		var remaining_at_collision: int = natural_lifespan - collision_frame
-		if remaining_at_collision < EARLY_EXPLOSION_THRESHOLD:
-			# 残り寿命が 3 秒未満 → 衝突と同時に即爆発
+		if remaining_at_collision <= EARLY_EXPLOSION_THRESHOLD:
+			# 残り寿命が 3 秒以下 → 衝突と同時に即爆発
 			explosion_frame = collision_frame
 		else:
 			# 寿命が長い → 壁に張り付き、残り寿命が 3 秒になった瞬間に爆発
@@ -455,6 +461,7 @@ func _register_kuru_explosion(cx: int, cy: int, power: int, explosion_frame: int
 # 単一の爆風マスを危険マップに記録する
 func _register_bomb_at(mx: int, my: int, distance: int, base_frame: int) -> void:
 	# 爆発中心からの距離に応じて爆風到達が遅れる (BOMB_SPREAD_TIME ごとに 1 マス拡大)
+	# 爆発中心には、爆発から 2 * BOMB_SPREAD_TIME フレーム後に当たり判定の発生が始まる
 	var start_frame: int = base_frame + (2 + distance) * Constants.BOMB_SPREAD_TIME
 	if start_frame < _danger_map[mx][my]:
 		_danger_map[mx][my] = start_frame
@@ -486,7 +493,6 @@ func hit_frame_from_events(x: int, y: int) -> int:
 func get_danger_grid() -> Array:
 	var copy: Array = []
 	for x in range(Constants.FIELD_COLS):
-		var col: Array = []
-		col.assign(_danger_map[x].duplicate())
+		var col: Array = _danger_map[x].duplicate()
 		copy.append(col)
 	return copy

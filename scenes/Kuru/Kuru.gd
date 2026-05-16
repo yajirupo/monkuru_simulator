@@ -21,6 +21,8 @@ var data: Dictionary = {
 	"kuru_type": 0,
 }
 
+const BOMB_SCENE: PackedScene = preload("res://scenes/Bomb/Bomb.tscn")
+
 
 # ============================================================
 # iniKuru(pKuru, num) の移植
@@ -158,27 +160,26 @@ func _trigger_early_explosion_on_collision() -> void:
 func kuru_bomb() -> bool:
 	if data["count"] == 0:
 		# 爆風生成（中心 + 十字方向）
-		var bomb_scene: PackedScene = load("res://scenes/Bomb/Bomb.tscn")
-		if bomb_scene:
-			var bomb_container: Node = get_parent().get_parent().get_node("BombContainer")
-			var cx: int = int(data["bomb_x"])
-			var cy: int = int(data["bomb_y"])
-			
-			var bomb_node = bomb_scene.instantiate()
-			bomb_node.init_bomb_from_cell(cx, cy, 0)
-			bomb_container.add_child(bomb_node)
-					
-			var power: int = int(data["power"])
-			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				for i in range(1, power + 1):
-					var nx: int = cx + dir.x * i
-					var ny: int = cy + dir.y * i
-					if not Utility.is_walkable_cell(nx, ny):
-						break
-					var bomb_node_sub = bomb_scene.instantiate()
-					bomb_node_sub.init_bomb_from_cell(nx, ny, i)
-					bomb_container.add_child(bomb_node_sub)
-
+		var bomb_container := get_tree().current_scene.get_node_or_null("BombContainer")
+		if bomb_container == null:
+			return false
+		var cx: int = int(data["bomb_x"])
+		var cy: int = int(data["bomb_y"])
+		
+		var bomb_node = BOMB_SCENE.instantiate()
+		bomb_node.init_bomb_from_cell(cx, cy, 0)
+		bomb_container.add_child(bomb_node)
+		
+		var power: int = int(data["power"])
+		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			for i in range(1, power + 1):
+				var nx: int = cx + dir.x * i
+				var ny: int = cy + dir.y * i
+				if not Utility.is_walkable_cell(nx, ny):
+					break
+				var bomb_node_sub = BOMB_SCENE.instantiate()
+				bomb_node_sub.init_bomb_from_cell(nx, ny, i)
+				bomb_container.add_child(bomb_node_sub)
 		# プレイヤーのshotKuruを減らす
 		GameState.player[data["player"]]["shot_kuru"] -= 1
 		return true
@@ -269,6 +270,14 @@ func _update_sprite() -> void:
 	var tex: ImageTexture = _get_kuru_tex(kuru_type, img_num)
 	if tex:
 		sp.texture = tex
+
+
+func prepare_for_free() -> void:
+	var sp: Sprite2D = get_node_or_null("Sprite2D")
+	if sp:
+		sp.texture = null
+	_tex_cache.clear()
+	data.clear()
 
 
 func _sync_position() -> void:

@@ -39,7 +39,8 @@
 
 extends Node
 
-const PORT        := 9999
+var port: int = 9999   # サーバー・クライアント共通のポート番号
+
 const MAX_CLIENTS := 1
 
 # ── 入力冗長設定 ──────────────────────────────────────────────
@@ -125,10 +126,22 @@ func _disconnect_safe(sig: Signal, callable: Callable) -> void:
 
 ## ENet サーバーを起動し、マルチプレイヤー用シグナルと状態を初期化する。
 func start_server() -> String:
+	# 念のため既存のピアを確実に破棄
+	if _peer:
+		_peer.close()
+		_peer = null
+	multiplayer.multiplayer_peer = null
+	
 	_peer = ENetMultiplayerPeer.new()
-	var err := _peer.create_server(PORT, MAX_CLIENTS)
+	var err := _peer.create_server(port, MAX_CLIENTS)
 	if err != OK:
-		return "ポート%dでの起動に失敗しました (error %d)" % [PORT, err]
+		# エラーの種類に応じてメッセージをわかりやすく
+		var msg := "ポート%dでの起動に失敗しました (error %d)" % [port, err]
+		if err == ERR_ALREADY_IN_USE:
+			msg = "ポート%dは既に使用されています。別のポートを指定してください。" % port
+		_peer = null
+		return msg
+	
 	multiplayer.multiplayer_peer = _peer
 	_connect_safe(multiplayer.peer_connected,    _on_peer_connected)
 	_connect_safe(multiplayer.peer_disconnected, _on_peer_disconnected)
@@ -141,9 +154,9 @@ func start_server() -> String:
 ## 指定 IP のサーバーへクライアント接続し、接続イベント受信用シグナルを設定する。
 func connect_to_server(ip: String) -> String:
 	_peer = ENetMultiplayerPeer.new()
-	var err := _peer.create_client(ip, PORT)
+	var err := _peer.create_client(ip, port)
 	if err != OK:
-		return "%s:%dへの接続に失敗しました (error %d)" % [ip, PORT, err]
+		return "%s:%dへの接続に失敗しました (error %d)" % [ip, port, err]
 	multiplayer.multiplayer_peer = _peer
 	_connect_safe(multiplayer.connection_failed,   _on_connection_failed)
 	_connect_safe(multiplayer.connected_to_server, _on_connected_to_server)

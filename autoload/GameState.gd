@@ -29,10 +29,16 @@ const STAGE_FILES: Array[String] = [
 static var STAGE_COUNT: int = STAGE_FILES.size()
 const MAP_CELL_HARD_BLOCK: int = 30
 const MAP_CELL_PLAYER0_START: int = 40
-const MAP_CELL_PLAYER1_START: int = 41
+const MAP_CELL_PLAYER7_START: int = 47
 var current_stage: int = 0
 var _stage_defs: Array[Dictionary] = []
 
+# VS COM 用 開始位置の割り当て（プレイヤー i が使う開始位置インデックス）
+var vs_com_start_assignments: Array[int] = []
+
+# VS COM リプレイ中に使うプレイヤー数（1P + COM数）。リプレイファイルから復元される。
+var vs_com_replay_player_count: int = 2
+var vs_com_replay_frame_count: int = 0
 
 # ============================================================
 # フィールド（マス配列）
@@ -95,8 +101,8 @@ func sanitize_chat_text(text: String, max_length: int) -> String:
 # replayData[2][MAX_REPLAY_FLAME]
 # ============================================================
 var replay_data: Array = [
-	PackedByteArray(),  # Player 0
-	PackedByteArray(),  # Player 1
+	PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(),
+	PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(),
 ]
 const REPLAY_TERMINATOR: int = 255
 var p_replay_data: int = 0  # 現在の記録フレームポインタ
@@ -105,9 +111,10 @@ var last_single_replay_data: PackedByteArray = PackedByteArray()
 var last_single_replay_menu: Dictionary = {}
 var last_single_replay_chat_events: Array[Dictionary] = []
 var has_last_single_replay: bool = false
-var last_vs_replay_data: Array = [PackedByteArray(), PackedByteArray()]
+var last_vs_replay_data: Array = [PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray(), PackedByteArray()]
 var last_vs_replay_menu: Dictionary = {}
 var last_vs_replay_chat_events: Array[Dictionary] = []
+var last_vs_replay_frame_count: int = 0
 var last_vs_replay_is_com: bool = false
 var has_last_vs_replay: bool = false
 var last_online_replay_data: Array = [PackedByteArray(), PackedByteArray()]
@@ -126,11 +133,11 @@ var online_replay_state_event_cursor: int = 0
 var online_replay_local_player_idx: int = 0
 
 func init_replay() -> void:
-	replay_data[0] = PackedByteArray()
-	replay_data[0].resize(Constants.MAX_REPLAY_FLAME)
-	replay_data[1] = PackedByteArray()
-	replay_data[1].resize(Constants.MAX_REPLAY_FLAME)
+	for i in range(Constants.MAX_PLAYER):
+		replay_data[i] = PackedByteArray()
+		replay_data[i].resize(Constants.MAX_REPLAY_FLAME)
 	p_replay_data = 0
+	vs_com_replay_frame_count = 0
 
 func clamp_stage(stage: int) -> int:
 	return clampi(stage, 0, STAGE_COUNT - 1)
@@ -164,9 +171,7 @@ func get_stage_player_start_cell(stage: int, player_idx: int) -> Vector2i:
 	return fallback
 
 func pick_random_stage() -> int:
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
-	return rng.randi_range(0, STAGE_COUNT - 1)
+	return randi_range(0, STAGE_COUNT - 1)
 
 func _load_stage_defs() -> void:
 	_stage_defs.clear()
@@ -180,6 +185,8 @@ func _load_single_stage_def(path: String, index: int) -> Dictionary:
 		"player1_start": Vector2i(17, 10),
 		"hard_blocks": [],
 	}
+	for i in range(2, 8):
+		default_def["player%d_start" % i] = Vector2i(17, 10)
 	if not FileAccess.file_exists(path):
 		push_warning("GameState: stage map not found: %s" % path)
 		return default_def
@@ -218,12 +225,10 @@ func _load_single_stage_def(path: String, index: int) -> Dictionary:
 			match code:
 				MAP_CELL_HARD_BLOCK:
 					hard_blocks.append(Vector2i(x, y))
-				MAP_CELL_PLAYER0_START:
-					default_def["player0_start"] = Vector2i(x, y)
-				MAP_CELL_PLAYER1_START:
-					default_def["player1_start"] = Vector2i(x, y)
 				_:
-					pass
+					if code >= MAP_CELL_PLAYER0_START and code <= MAP_CELL_PLAYER7_START:
+						var idx_player := code - MAP_CELL_PLAYER0_START
+						default_def["player%d_start" % idx_player] = Vector2i(x, y)
 	default_def["hard_blocks"] = hard_blocks
 	return default_def
 
@@ -257,45 +262,36 @@ func remember_last_vs_game_replay(is_vs_com: bool) -> void:
 	# （特に VS COM では COM がアイテムを使用すると cr_item が NO_ITEM になり、
 	#  その状態を保存すると再生時に同じアイテム使用が再現できないため）
 	var replay_menu_src: Dictionary = GameData.vs_com_menu_tmp if is_vs_com else GameData.vs_menu_tmp
-	last_vs_replay_menu = {
-		"stage": current_stage,
-		"name": [
-			replay_menu_src["name"][0],
-			replay_menu_src["name"][1],
-		],
-		"player_type": [
-			replay_menu_src["player_type"][0],
-			replay_menu_src["player_type"][1],
-		],
-		"kuru_type": [
-			replay_menu_src["kuru_type"][0],
-			replay_menu_src["kuru_type"][1],
-		],
-		"item_type": [
-			[
-				replay_menu_src["item_type"][0][0],
-				replay_menu_src["item_type"][0][1],
-				replay_menu_src["item_type"][0][2],
-			],
-			[
-				replay_menu_src["item_type"][1][0],
-				replay_menu_src["item_type"][1][1],
-				replay_menu_src["item_type"][1][2],
-			],
-		],
-	}
-	last_vs_replay_data[0] = _copy_replay_until_terminator(replay_data[0])
-	last_vs_replay_data[1] = _copy_replay_until_terminator(replay_data[1])
+	var player_count := 2
+	if is_vs_com:
+		player_count = clampi(int(replay_menu_src.get("com_count", 1)), 1, Constants.MAX_PLAYER - 1) + 1
+	var names: Array = []
+	var player_types: Array = []
+	var kuru_types: Array = []
+	var item_types: Array = []
+	for i in range(player_count):
+		names.append(replay_menu_src["name"][i])
+		player_types.append(replay_menu_src["player_type"][i])
+		kuru_types.append(replay_menu_src["kuru_type"][i])
+		item_types.append([replay_menu_src["item_type"][i][0], replay_menu_src["item_type"][i][1], replay_menu_src["item_type"][i][2]])
+	last_vs_replay_menu = {"stage": current_stage, "name": names, "player_type": player_types, "kuru_type": kuru_types, "item_type": item_types, "player_count": player_count}
+	# 開始位置割り当てもスナップショットとして保存
+	last_vs_replay_menu["start_assignments"] = GameState.vs_com_start_assignments.duplicate()
+	var data_copy_count := Constants.MAX_PLAYER if is_vs_com else 2
+	if is_vs_com:
+		last_vs_replay_frame_count = clampi(p_replay_data, 0, Constants.MAX_REPLAY_FLAME - 1)
+		for i in range(data_copy_count):
+			last_vs_replay_data[i] = _copy_replay_frames(replay_data[i], last_vs_replay_frame_count)
+	else:
+		last_vs_replay_frame_count = 0
+		for i in range(data_copy_count):
+			last_vs_replay_data[i] = _copy_replay_until_terminator(replay_data[i])
 	last_vs_replay_chat_events = replay_chat_events.duplicate(true)
 	last_vs_replay_is_com = is_vs_com
 	has_last_vs_replay = true
 
 func remember_last_online_game_replay() -> void:
 	var om: Dictionary = GameState.online_menu
-	# BUG FIX: 以前は常に om→index0, remote→index1 で保存していたため、
-	# クライアント側（my_idx=1）で保存すると menu と replay_data のインデックスが
-	# ずれてキャラ・くる・アイテムが逆転していた。
-	# → my_idx / remote_idx を使って正しいインデックスに格納する。
 	var my_idx     := NetworkManager.my_player_index()
 	var remote_idx := NetworkManager.remote_player_index()
 	var remote: Dictionary = NetworkManager.remote_stats
@@ -335,14 +331,18 @@ func remember_last_online_game_replay() -> void:
 	has_last_online_replay = true
 
 func _copy_replay_until_terminator(src: PackedByteArray) -> PackedByteArray:
-	var out := PackedByteArray()
-	for i in range(src.size()):
-		out.append(src[i])
-		if src[i] == REPLAY_TERMINATOR:
-			return out
+	var term_pos := src.find(REPLAY_TERMINATOR)
+	if term_pos >= 0:
+		return src.slice(0, term_pos + 1)   # ターミネータを含めてスライス
+	var out := src.duplicate()
 	out.append(REPLAY_TERMINATOR)
 	return out
 
+func _copy_replay_frames(src: PackedByteArray, frame_count: int) -> PackedByteArray:
+	var safe_count := clampi(frame_count, 0, mini(src.size(), Constants.MAX_REPLAY_FLAME - 1))
+	var out := src.slice(0, safe_count)
+	out.append(REPLAY_TERMINATOR)
+	return out
 
 # ============================================================
 # チャット文字列（chatStr[3][50]）
@@ -466,6 +466,12 @@ var key_config_cursor: int = 0
 var use_key: Array = [
 	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 0
 	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 1
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 2
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 3
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 4
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 5
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 6
+	[0, 0, 0, 0, 0, 0, 0, 0],  # Player 7
 ]
 
 # シングル・VS用の別キーセット

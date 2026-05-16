@@ -41,16 +41,10 @@ func ini_game(scene_root: Node) -> void:
 	# （scene_root.get_node("Player").ini_player() を Main.gd から呼ぶ）
 
 	# くる全削除
-	var kuru_container := scene_root.get_node_or_null("KuruContainer")
-	if kuru_container:
-		for child in kuru_container.get_children():
-			child.queue_free()
+	_release_dynamic_children(scene_root.get_node_or_null("KuruContainer"))
 
 	# 爆風全削除
-	var bomb_container := scene_root.get_node_or_null("BombContainer")
-	if bomb_container:
-		for child in bomb_container.get_children():
-			child.queue_free()
+	_release_dynamic_children(scene_root.get_node_or_null("BombContainer"))
 
 	# フィールド初期化（全マスをBROKENに）
 	for x in range(Constants.FIELD_COLS):
@@ -89,3 +83,16 @@ func _apply_stage_hard_blocks() -> void:
 		for x in range(center_x0, center_x0 + 2):
 			if y >= 0 and y < Constants.FIELD_ROWS and x >= 0 and x < Constants.FIELD_COLS:
 				GameState.masu[x][y]["kind"] = Enums.MasuKind.HARD_BLOCK
+
+
+func _release_dynamic_children(container: Node) -> void:
+	if container == null:
+		return
+	for child in container.get_children():
+		if child == null or not is_instance_valid(child):
+			continue
+		if child.has_method("prepare_for_free"):
+			child.call("prepare_for_free")
+		if child.get_parent() == container:
+			container.remove_child(child)
+		child.queue_free()

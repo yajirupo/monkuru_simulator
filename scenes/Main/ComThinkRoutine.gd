@@ -12,7 +12,7 @@ var _chain_attacker: ComChainAttacker     # 連鎖攻撃を管理
 
 # 内部状態
 var _dir_order: Array = [0, 1, 2, 3]  # 右, 左, 下, 上、後にシャッフルされる
-var _shuffle_timer: int = 60
+var _shuffle_countdown: int = 0
 var _recent_shots: Array = []  # { "frame": int, "x": int, "y": int, "muki": int }
 
 # デバッグ用スナップショット（毎フレーム更新）
@@ -24,6 +24,9 @@ const ITEM_KEY_BASE: int = 5
 # ---- 接近目標（優先度6の新ルール用） ----
 var _approach_wx: int = 0
 var _approach_wy: int = 0
+var com_player_index: int = 1
+var _target_switch_countdown: int = 0
+var _target_player_index: int = 0
 
 
 func _init() -> void:
@@ -33,8 +36,6 @@ func _init() -> void:
 	_player_tracker = ComPlayerTracker.new()
 	_rush_controller = ComRushController.new()
 	_chain_attacker = ComChainAttacker.new()
-	_approach_wx = 0
-	_approach_wy = 0
 
 
 func setup(field_masu: Array) -> void:
@@ -44,19 +45,26 @@ func setup(field_masu: Array) -> void:
 	_rush_controller.initialize(_danger_detector)
 	_chain_attacker.initialize(_danger_detector)
 
+func set_shared_danger_detector(detector: ComDangerDetector) -> void:
+	_danger_detector = detector
+	_pathfinder.initialize(_danger_detector)
+	_item_user.initialize(GameState, _danger_detector, _pathfinder)
+	_rush_controller.initialize(_danger_detector)
+	_chain_attacker.initialize(_danger_detector)
 
-func update_com_keys(bomb_container: Node, kuru_container: Node) -> void:
-	_danger_detector.build_event_list(bomb_container, kuru_container)
+
+func update_com_keys(kuru_container: Node) -> void:
 	_build_com_input(kuru_container)
 
 
 func reset_for_new_game() -> void:
-	_shuffle_timer = 60
+	_shuffle_countdown = 0
 	_recent_shots.clear()
 	_player_tracker.reset()
 	_rush_controller.reset()
 	_approach_wx = 0
 	_approach_wy = 0
+	_target_switch_countdown = 0
 
 
 ## Main.gd から呼ばれる（被弾時などにラッシュを中断）
@@ -66,9 +74,23 @@ func cancel_rush() -> void:
 
 func _build_com_input(kuru_container: Node) -> void:
 	var keys: Array = [false, false, false, false, false, false, false, false]
-	var player_num: int = 1
-	var opponent_num: int = 0
+	var player_num: int = com_player_index
+	var active_count := clampi(int(GameData.vs_com_menu.get("com_count", 1)), 1, Constants.MAX_PLAYER - 1) + 1
+	if player_num <= 0 or player_num >= active_count:
+		_apply_keys(keys, player_num)
+		return
 	var p: Dictionary = GameState.player[player_num]
+	if not p["life_flag"]:
+		_apply_keys(keys, player_num)
+		return
+	if _target_switch_countdown <= 0 or _target_player_index < 0 or not GameState.player[_target_player_index]["life_flag"]:
+		_target_player_index = _pick_random_target(player_num)
+		_target_switch_countdown = 5 * Constants.FPS
+	else:
+		_target_switch_countdown -= 1
+	var opponent_num: int = _target_player_index
+	if opponent_num == -1:
+		opponent_num = player_num # 優勝したので、とりあえず自分を狙っておく
 	var op: Dictionary = GameState.player[opponent_num]
 
 	# 敵の推定座標を取得し、op を上書き
@@ -77,9 +99,9 @@ func _build_com_input(kuru_container: Node) -> void:
 	op_estimated["masu_x"] = estimated_pos.x
 	op_estimated["masu_y"] = estimated_pos.y
 
-	_shuffle_timer += 1
-	if _shuffle_timer >= 60:
-		_shuffle_timer = 0
+	_shuffle_countdown -= 1
+	if _shuffle_countdown <= 0:
+		_shuffle_countdown = Constants.FPS
 		_dir_order.shuffle()
 		_pathfinder.set_dir_order(_dir_order)
 		_approach_wx = randi() % 3  # 0, 1, 2
@@ -100,7 +122,7 @@ func _build_com_input(kuru_container: Node) -> void:
 		return
 
 	# ---- ラッシュ開始条件判定 ----
-	if _rush_controller.should_start_rush(op_estimated):
+	if _rush_controller.should_start_rush(player_num, op_estimated):
 		var rush_dir: int = p["muki"]  # 現在の向きで突撃
 		if _rush_controller.can_safely_rush(rush_dir):
 			var can_start_rush: bool = true
@@ -145,7 +167,6 @@ func _build_com_input(kuru_container: Node) -> void:
 		_danger_detector.is_cell_eternally_safe(px, py)
 		and p["cr_item_use"] != Enums.ItemType.ROCKET
 		and p["cr_item_use"] != Enums.ItemType.BROTHER
-		and not _chain_attacker.is_cell_near_wall(px, py)
 		and _can_com_shoot_kuru_in_chain(player_num, op_estimated)
 	):
 		var chain_dir: int = _chain_attacker.get_chain_dir(player_num, _dir_order)
@@ -246,7 +267,7 @@ func _build_com_input(kuru_container: Node) -> void:
 # ====================================================================
 
 func _update_debug_snapshot(phase: String, reason: String, keys: Array, in_danger: bool) -> void:
-	var p: Dictionary = GameState.player[1]
+	var p: Dictionary = GameState.player[com_player_index]
 	debug_snapshot = {
 		"phase": phase,
 		"reason": reason,
@@ -302,12 +323,11 @@ func _can_com_shoot_kuru(player_num: int, op_estimated: Dictionary) -> bool:
 		return false
 
 	# 60フレーム以上古いエントリを削除（ループ前に一括除去）
-	var now: int = GameState.count
-	while _recent_shots.size() > 0 and now - _recent_shots[0].frame >= 60:
+	while _recent_shots.size() > 0 and GameState.count - _recent_shots[0].frame >= 60:
 		_recent_shots.pop_front()
 
 	# 直近8フレーム以内の連射禁止（_recent_shots の末尾を参照）
-	if _recent_shots.size() > 0 and now - _recent_shots.back().frame < 8:
+	if _recent_shots.size() > 0 and GameState.count - _recent_shots.back().frame < 8:
 		return false
 
 	# 最近60フレームに同じマス・同じ向きでの発射があったか
@@ -342,16 +362,30 @@ func _can_com_shoot_kuru_in_chain(player_num: int, op_estimated: Dictionary) -> 
 	if p["shot_count"] > 0:
 		return false
 
+	# 60フレーム以上古いエントリを削除（ループ前に一括除去）
+	while _recent_shots.size() > 0 and GameState.count - _recent_shots[0].frame >= 60:
+		_recent_shots.pop_front()
+		
 	# 直近8フレーム以内の連射禁止
 	if _recent_shots.size() > 0 and GameState.count - _recent_shots.back().frame < 8:
 		return false
 
-	var max_shot: int = p["item_shot"]
+	var max_shot: int = p["item_shot"] # くる兄弟、くるロケットは使用していない前提
 	var current_shot: int = p["shot_kuru"]
 	if current_shot >= max_shot:
 		return false
 	return true
 
+
+func _pick_random_target(player_num: int) -> int:
+	var cands: Array[int] = []
+	var active_count := clampi(int(GameData.vs_com_menu.get("com_count", 1)), 1, Constants.MAX_PLAYER - 1) + 1
+	for i in range(active_count):
+		if i != player_num and GameState.player[i]["life_flag"]:
+			cands.append(i)
+	if cands.is_empty():
+		return -1
+	return cands[randi() % cands.size()]
 
 func _record_com_shot(player_num: int) -> void:
 	var p: Dictionary = GameState.player[player_num]
@@ -394,19 +428,16 @@ func _choose_direction_toward_target(player_num: int, target_x: int, target_y: i
 	var sy: int = p["masu_y"]
 	var mf: int = _com_move_frames(player_num)
 
-	var candidates: Array = []
+	var best_dir: int = -1
+	var best_dist: int = 0x7FFFFFFF  # 十分大きな値
+
 	for d in _dir_order:
 		var nx: int = sx + Utility.dx_from_dir(d)
 		var ny: int = sy + Utility.dy_from_dir(d)
 		if Utility.is_walkable_cell(nx, ny) and _is_cell_safe_for_move(nx, ny, mf):
-			candidates.append({
-				"dir": d,
-				"dist": abs(nx - target_x) + abs(ny - target_y)
-			})
-
-	if candidates.is_empty():
-		return -1
-
-	# 目標に近い順にソート
-	candidates.sort_custom(func(a, b): return a["dist"] < b["dist"])
-	return candidates[0]["dir"]
+			var dist: int = abs(nx - target_x) + abs(ny - target_y)
+			# dist が真に小さい場合だけ更新（同距離では最初のものを優先）
+			if dist < best_dist:
+				best_dist = dist
+				best_dir = d
+	return best_dir

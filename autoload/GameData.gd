@@ -28,21 +28,28 @@ var menu_tmp: Dictionary = {}
 
 func make_vs_menu() -> Dictionary:
 	return {
-		"name":          ["", ""],
+		"name":          ["", "", "", "", "", "", "", ""],
 		"stage":         0,
 		"player_type":   [
-			Enums.PlayerType.YAMI,
-			Enums.PlayerType.YAMI,
+			Enums.PlayerType.YAMI, Enums.PlayerType.YAMI, Enums.PlayerType.YAMI, Enums.PlayerType.YAMI,
+			Enums.PlayerType.YAMI, Enums.PlayerType.YAMI, Enums.PlayerType.YAMI, Enums.PlayerType.YAMI,
 		],
 		"kuru_type":     [
-			Enums.KuruType.KIHON,
-			Enums.KuruType.KIHON,
+			Enums.KuruType.KIHON, Enums.KuruType.KIHON, Enums.KuruType.KIHON, Enums.KuruType.KIHON,
+			Enums.KuruType.KIHON, Enums.KuruType.KIHON, Enums.KuruType.KIHON, Enums.KuruType.KIHON,
 		],
 		"item_type":     [
 			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
 			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
+			[Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM, Enums.ItemType.NO_ITEM],
 		],
 		"cursor":        0,
+		"com_count":     1,
 	}
 
 var vs_menu:      Dictionary = {}

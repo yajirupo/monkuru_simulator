@@ -129,6 +129,9 @@ enum PlayerJoutaiType {
 	RUN_DOWN,
 	RUN_UP,
 	DEATH,
+	APPEAR,
+	WIN,   # 勝利演出
+	LOSE,  # 敗北演出
 }
 
 
@@ -157,4 +160,6 @@ static func joutai_to_anim(joutai: PlayerJoutaiType) -> String:
 		PlayerJoutaiType.RUN_DOWN:    return "run_down"
 		PlayerJoutaiType.RUN_UP:      return "run_up"
 		PlayerJoutaiType.DEATH:       return "death"
+		PlayerJoutaiType.WIN:         return "win"
+		PlayerJoutaiType.LOSE:        return "lose"
 	return "stand_down"

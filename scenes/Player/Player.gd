@@ -51,6 +51,9 @@ static func make_player_data() -> Dictionary:
 		"joutai_count":  0,
 		"just_died":     false,
 		"character":     Enums.PlayerType.YAMI,
+		"stand_cols":    {"stand_d": 9, "stand_u": 9, "stand_l": 9, "stand_r": 9},
+		"death_cols":    20,
+		"death_frame":   -1,  # 被弾フレーム（GameState.count）。未被弾は -1
 	}
 
 
@@ -79,7 +82,10 @@ func _ready() -> void:
 	# 描画クラスを初期化
 	_renderer = PlayerRenderer.new()
 	var sprite := get_node_or_null("Sprite2D") as Sprite2D
-	_renderer.setup(player_num, sprite, name_label, effect_sprite)
+	var appear   := get_node_or_null("AppearSprite") as Sprite2D
+	var shadow := get_node_or_null("ShadowSprite") as Sprite2D
+	var pin    := get_node_or_null("PinSprite") as Sprite2D
+	_renderer.setup(player_num, sprite, appear, name_label, effect_sprite, shadow, pin)
 
 	# オンライン: 相手プレイヤーの死亡通知を受け取る
 	NetworkManager.remote_player_died.connect(_on_remote_player_died)
@@ -102,7 +108,10 @@ func ini_player() -> void:
 		GameState.joutai_flag == Enums.JoutaiType.VS_COM_REPLAY or
 		GameState.joutai_flag == Enums.JoutaiType.ONLINE_REPLAY
 	)
-	var num := 2 if (
+	var num := Constants.MAX_PLAYER if (
+		GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME or
+		GameState.joutai_flag == Enums.JoutaiType.VS_COM_REPLAY
+	) else 2 if (
 		GameState.joutai_flag == Enums.JoutaiType.VS_GAME or
 		GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME or
 		GameState.joutai_flag == Enums.JoutaiType.VS_REPLAY or
@@ -129,23 +138,29 @@ func ini_player() -> void:
 			for i in range(3):
 				p["cr_item"][i] = d["item_type"][i]
 		else:
-			for j in range(2):
+			var vm: Dictionary = GameData.vs_com_menu if GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME else GameData.vs_menu
+			var player_count := Constants.MAX_PLAYER if GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME else 2
+			for j in range(player_count):
 				var pj: Dictionary = GameState.player[j]
-				if is_online:
-					pass  # character/kuru_type は GameState.player[j] に設定済み
-				else:
-					var vm: Dictionary = GameData.vs_com_menu if GameState.joutai_flag == Enums.JoutaiType.VS_COM_GAME else GameData.vs_menu
-					pj["kuru_type"]     = vm["kuru_type"][j]
-					pj["character"]     = vm["player_type"][j]
-					for i in range(3):
-						pj["cr_item"][i] = vm["item_type"][j][i]
-					pj["name"]          = vm["name"][j]
-
+				pj["kuru_type"]     = vm["kuru_type"][j]
+				pj["character"]     = vm["player_type"][j]
+				for i in range(3):
+					pj["cr_item"][i] = vm["item_type"][j][i]
+				pj["name"]          = vm["name"][j]
+	
 	# 共通初期化
 	var stage := GameState.clamp_stage(GameState.current_stage)
 	for i in range(num):
 		var pi: Dictionary = GameState.player[i]
-		var start_cell := GameState.get_stage_player_start_cell(stage, i)
+		
+		# VS COM モードではランダムな開始位置インデックスを使用
+		var start_index := i
+		if GameState.joutai_flag in [Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY]:
+			if i < GameState.vs_com_start_assignments.size():
+				start_index = GameState.vs_com_start_assignments[i]
+			# フォールバック：割り当てが空なら従来通り i を使う
+			
+		var start_cell := GameState.get_stage_player_start_cell(stage, start_index)
 		pi["masu_x"]      = start_cell.x
 		pi["masu_y"]      = start_cell.y
 		pi["x"]           = start_cell.x * 320
@@ -154,11 +169,12 @@ func ini_player() -> void:
 		pi["shot_count"]  = 0
 		pi["shot_kuru"]   = 0
 		pi["life_flag"]   = true
+		pi["death_frame"] = -1  # 被弾タイムスタンプをリセット
 
 		if num == 1:
 			pi["kuru_type"]  = Constants.get_practice_kuru_type()
 			pi["character"]  = Enums.PlayerType.YAMI
-		elif num == 2:
+		elif num >= 2:
 			var is_online_setup := GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME
 			if not is_online_setup:   # オンラインはOnlineGameSetup.setup()で設定済み
 				var kt: int = pi["kuru_type"]
@@ -178,13 +194,33 @@ func ini_player() -> void:
 				pi["kuru_dankai"]  = int(kuru_def["dankai"])
 				pi["kuru_kankaku"] = int(kuru_def["kankaku"])
 
+		_cache_character_sprite_counts(pi)
+
 		pi["cr_item_use"]   = Enums.ItemType.NO_ITEM
 		pi["cr_item_count"] = 0
-		pi["joutai"]        = pi["muki"]  # STAND_DOWN = Muki.DOWN
+		
+		# VS COM ゲームは登場アニメーション状態で開始（リプレイは通常通り）
+		if GameState.joutai_flag in [Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY]:
+			pi["joutai"] = Enums.PlayerJoutaiType.APPEAR
+		else:
+			pi["joutai"] = pi["muki"]  # STAND_DOWN = Muki.DOWN
 		pi["joutai_count"]  = 0
 
 	_sync_position()
 	_renderer.reset()
+
+
+func _cache_character_sprite_counts(pi: Dictionary) -> void:
+	var ch: int = int(pi.get("character", 0))
+	var stand_cols := {
+		"stand_d": int(Constants.get_character_sprite_info(ch, "stand_d").get("cols", 1)),
+		"stand_u": int(Constants.get_character_sprite_info(ch, "stand_u").get("cols", 1)),
+		"stand_l": int(Constants.get_character_sprite_info(ch, "stand_l").get("cols", 1)),
+		"stand_r": int(Constants.get_character_sprite_info(ch, "stand_r").get("cols", 1)),
+	}
+	pi["stand_cols"] = stand_cols
+	pi["death_cols"] = int(Constants.get_character_sprite_info(ch, "death").get("cols", 1))
+
 
 
 # ============================================================
@@ -202,27 +238,49 @@ func player_calc() -> void:
 
 	for i in range(num):
 		var pi: Dictionary = GameState.player[i]
+
+		# WIN/LOSE 演出中はカウンタのみ更新してすべてのゲームロジックをスキップ
+		if pi["joutai"] in [Enums.PlayerJoutaiType.WIN, Enums.PlayerJoutaiType.LOSE]:
+			pi["joutai_count"] += 1
+			continue
+
 		if pi["life_flag"]:
-			var shot_flag := _player_shot(i)
-			_player_move(shot_flag, i)
-			# ONLINE_GAME: 相手の処理はすべてRPC任せ（アイテム・被弾スキップ）
-			# ONLINE_REPLAY: アイテムは両プレイヤーで再生。
-			#   被弾はローカル側のみbomb検出し、リモート側はstate_eventで再現する。
-			var _skip_remote_game   := GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME   and i != my_online_idx
-			var _skip_remote_replay := GameState.joutai_flag == Enums.JoutaiType.ONLINE_REPLAY and i != my_online_idx
-			if not _skip_remote_game:
-				_player_cr_item(i)
-			if not _skip_remote_game and not _skip_remote_replay:
-				_player_hit_bomb(i)
-				# 相手がこちらのくるに衝突したかの判定は各自の端末に任せる
-				_player_hit_kuru(i)
+			if pi["joutai"] == Enums.PlayerJoutaiType.APPEAR:
+				# 登場アニメーション中：入力・移動・被弾をすべてスキップ
+				# joutai_count はこの後の共通部で +1 されるため -1 と比較
+				const APPEAR_COLS := 23
+				if pi["joutai_count"] >= APPEAR_COLS * Constants.REFRESH_PICTURE_TIME - 1:
+					pi["joutai"]       = pi["muki"]
+					pi["joutai_count"] = 0
+			else:
+				var shot_flag := _player_shot(i)
+				_player_move(shot_flag, i)
+				# ONLINE_GAME: 相手の処理はすべてRPC任せ（アイテム・被弾スキップ）
+				# ONLINE_REPLAY: アイテムは両プレイヤーで再生。
+				#   被弾はローカル側のみbomb検出し、リモート側はstate_eventで再現する。
+				var _skip_remote_game   := GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME   and i != my_online_idx
+				var _skip_remote_replay := GameState.joutai_flag == Enums.JoutaiType.ONLINE_REPLAY and i != my_online_idx
+				if not _skip_remote_game:
+					_player_cr_item(i)
+				if not _skip_remote_game and not _skip_remote_replay:
+					_player_hit_bomb(i)
+					# 相手がこちらのくるに衝突したかの判定は各自の端末に任せる
+					_player_hit_kuru(i)
 		else:
-			# 死亡アニメーション終了後に復活
+			# 死亡アニメーション終了後:
+			#   VS COM は退場（復活しない）
+			#   それ以外は従来どおり復活
+			var death_cols: int = int(pi.get("death_cols", 1))
+			var death_end_frame: int = death_cols * Constants.REFRESH_PICTURE_TIME - 1
 			if pi["joutai"] == Enums.PlayerJoutaiType.DEATH and \
-			   pi["joutai_count"] == 20 * Constants.REFRESH_PICTURE_TIME - 1:
-				pi["life_flag"]    = true
-				pi["joutai"]       = pi["muki"]
-				pi["joutai_count"] = 0
+			   pi["joutai_count"] == death_end_frame:
+				if GameState.joutai_flag in [Enums.JoutaiType.VS_COM_GAME, Enums.JoutaiType.VS_COM_REPLAY]:
+					# 退場状態を維持する。描画/入力は各処理側で停止する。
+					pi["joutai_count"] = death_end_frame
+				else:
+					pi["life_flag"]    = true
+					pi["joutai"]       = pi["muki"]
+					pi["joutai_count"] = 0
 
 		# カウンタ更新
 		if pi["shot_count"] > 0:
@@ -522,6 +580,13 @@ func _kill_player(num: int) -> void:
 	pi["life_flag"]    = false
 	pi["joutai_count"] = 0
 	pi["joutai"]       = Enums.PlayerJoutaiType.DEATH
+	pi["death_frame"]  = GameState.count  # 被弾フレームを記録
+	# VS COM モードで人間プレイヤー（0番）が被弾したら BGM を death.ogg に切り替える
+	if num == 0 and GameState.joutai_flag in [
+		Enums.JoutaiType.VS_COM_GAME,
+		Enums.JoutaiType.VS_COM_REPLAY,
+	]:
+		SoundManager.play_death_bgm()
 	if GameState.joutai_flag == Enums.JoutaiType.ONLINE_GAME:
 		NetworkManager.send_death_event(num)
 	_update_chat(num)
@@ -642,9 +707,11 @@ func _sync_position() -> void:
 
 func _get_active_player_count() -> int:
 	match GameState.joutai_flag:
-		Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_COM_GAME, \
-		Enums.JoutaiType.VS_REPLAY, Enums.JoutaiType.VS_COM_REPLAY, \
-		Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY:
+		Enums.JoutaiType.VS_GAME, Enums.JoutaiType.VS_REPLAY, Enums.JoutaiType.ONLINE_GAME, Enums.JoutaiType.ONLINE_REPLAY:
 			return 2
+		Enums.JoutaiType.VS_COM_GAME:
+			return clampi(int(GameData.vs_com_menu.get("com_count", 1)), 1, Constants.MAX_PLAYER - 1) + 1
+		Enums.JoutaiType.VS_COM_REPLAY:
+			return clampi(GameState.vs_com_replay_player_count, 2, Constants.MAX_PLAYER)
 		_:
 			return 1

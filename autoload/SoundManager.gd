@@ -84,6 +84,7 @@ func _load_se() -> void:
 		"res://assets/sounds/crItemBrother.wav",
 		"res://assets/sounds/crItemInvisibleStart.wav",
 		"res://assets/sounds/crItemInvisibleEnd.wav",
+		"res://assets/sounds/gm_ready.wav",
 	]
 	for path in se_paths:
 		if _se_players.has(path):
@@ -147,7 +148,7 @@ func play_death(character_idx: int = 0, use_practice_sound: bool = false) -> voi
 		se_path = "res://assets/sounds/gm_Monster00_damage.wav"
 	play_se(se_path)
 
-## 爆弾爆発 SE を再生する。
+## 爆風爆発 SE を再生する。
 func play_bomb() -> void:
 	play_se("res://assets/sounds/bomb.wav")
 
@@ -175,6 +176,32 @@ func play_cr_shoes() -> void:
 func play_cr_brother() -> void:
 	play_se("res://assets/sounds/crItemBrother.wav")
 
+## VS COM ゲーム開始 SE を再生する。
+func play_ready() -> void:
+	play_se("res://assets/sounds/gm_ready.wav")
+
+## VS COM 勝利 BGM を1回再生する（現在の BGM を停止して切り替える）。
+func play_win_bgm() -> void:
+	play_bgm_track("res://assets/bgm/gm_win.ogg", false)
+
+## VS COM 敗北 BGM を1回再生する（現在の BGM を停止して切り替える）。
+func play_lose_bgm() -> void:
+	play_bgm_track("res://assets/bgm/gm_lose.ogg", false)
+
+## 人間プレイヤー被弾時の BGM をループ再生する（現在の BGM を停止して切り替える）。
+func play_death_bgm() -> void:
+	play_bgm_track("res://assets/bgm/death.ogg", true)
+
+## 勝敗 BGM を停止する（メニューへ戻るときに呼ぶ）。
+## その後 _update_bgm_for_state() が適切な BGM を再開する。
+func stop_win_lose() -> void:
+	if _current_bgm_path in [
+		"res://assets/bgm/gm_win.ogg",
+		"res://assets/bgm/gm_lose.ogg",
+	]:
+		stop_bgm()
+		_current_bgm_path = ""
+	
 ## BGM 音量（%）を更新し、GameState と再生中プレイヤーへ反映する。
 func set_bgm_volume_percent(percent: float) -> void:
 	_bgm_volume_percent = clampf(percent, 0.0, 100.0)
@@ -240,4 +267,7 @@ func _bgm_paths() -> Array[String]:
 	var result: Array[String] = ["res://assets/bgm/lobby.ogg"]
 	for stage in range(4):
 		result.append("res://assets/bgm/stage%d.ogg" % stage)
+	result.append("res://assets/bgm/death.ogg")
+	result.append("res://assets/bgm/gm_win.ogg")
+	result.append("res://assets/bgm/gm_lose.ogg")
 	return result

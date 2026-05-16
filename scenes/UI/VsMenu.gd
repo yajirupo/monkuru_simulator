@@ -10,6 +10,11 @@ var _name_edits: Array[LineEdit] = [null, null]
 var _update_fns: Array[Callable] = []
 var _status_lbls: Array[Label] = [null, null]
 
+var _character_overlay: CharacterSelectOverlay = null
+var _kuru_overlay: KuruSelectOverlay = null
+var _item_overlay: ItemSelectOverlay = null
+var _stage_overlay: StageSelectOverlay = null
+
 func _ready() -> void:
 	_clear_children()
 	_build_ui()
@@ -27,7 +32,12 @@ func _build_ui() -> void:
 
 	_lbl(root, "── 2P対戦メニュー ──")
 	root.add_child(HSeparator.new())
-
+	
+	_ensure_character_overlay() 
+	_ensure_kuru_overlay()
+	_ensure_item_overlay()
+	_ensure_stage_overlay()
+	
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 20)
 	root.add_child(cols)
@@ -86,16 +96,13 @@ func _make_player_panel(parent: Control, pi: int, title: String) -> void:
 			_name_btns[pi].text = menu["name"][pi])
 
 	# キャラ
-	_arrow_row(vbox, "キャラ",
-		func(): return Constants.get_character_name(menu["player_type"][pi]),
-		func(): menu["player_type"][pi] = wrapi(menu["player_type"][pi] - 1, 0, Constants.get_character_count()),
-		func(): menu["player_type"][pi] = wrapi(menu["player_type"][pi] + 1, 0, Constants.get_character_count()))
-
+	_make_character_row(vbox,
+		func(): return menu["player_type"][pi],
+		func(v: int): menu["player_type"][pi] = v)
 	# くる
-	_arrow_row(vbox, "くる",
-		func(): return Constants.get_kuru_name(menu["kuru_type"][pi]),
-		func(): menu["kuru_type"][pi] = wrapi(menu["kuru_type"][pi] - 1, 0, Constants.get_kuru_count()),
-		func(): menu["kuru_type"][pi] = wrapi(menu["kuru_type"][pi] + 1, 0, Constants.get_kuru_count()))
+	_make_kuru_row(vbox,
+		func(): return menu["kuru_type"][pi],
+		func(v: int): menu["kuru_type"][pi] = v)
 
 	_status_lbls[pi] = Label.new()
 	_status_lbls[pi].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -116,7 +123,14 @@ func _make_player_panel(parent: Control, pi: int, title: String) -> void:
 		_arrow_row(vbox, "アイテム%d" % (i + 1),
 			func(): return ITEM_NAMES[menu["item_type"][pi][slot]],
 			func(): menu["item_type"][pi][slot] = wrapi(menu["item_type"][pi][slot] - 1, 0, 5),
-			func(): menu["item_type"][pi][slot] = wrapi(menu["item_type"][pi][slot] + 1, 0, 5))
+			func(): menu["item_type"][pi][slot] = wrapi(menu["item_type"][pi][slot] + 1, 0, 5),
+			# ▼ 追加
+			func():
+				_item_overlay.show_overlay(func(new_val: int):
+					menu["item_type"][pi][slot] = new_val
+					_update_display()
+				)
+		)
 
 
 # ── ユーティリティ ──────────────────────────────────────────
@@ -141,28 +155,46 @@ func _lbl_w(parent: Control, text: String, w: float) -> Label:
 	l.custom_minimum_size.x = w; return l
 
 func _arrow_row(parent: Control, label_text: String,
-		get_fn: Callable, dec_fn: Callable, inc_fn: Callable) -> void:
+		get_fn: Callable, dec_fn: Callable, inc_fn: Callable,
+		overlay_callback: Callable = Callable()) -> void:
 	var hbox := HBoxContainer.new()
 	_lbl_w(hbox, label_text + "：", 90)
 	var bl := _mk_btn("◀")
 	bl.pressed.connect(func(): dec_fn.call(); _update_display())
 	hbox.add_child(bl)
-	var vl := Label.new()
-	vl.custom_minimum_size.x = 70
-	vl.horizontal_alignment  = HORIZONTAL_ALIGNMENT_CENTER
-	hbox.add_child(vl)
+
+	# ★ オーバーレイ用コールバックがあれば Button、なければ Label
+	if overlay_callback.is_valid():
+		var val_btn := _mk_btn("")
+		val_btn.custom_minimum_size.x = 80
+		val_btn.pressed.connect(overlay_callback)
+		hbox.add_child(val_btn)
+		_update_fns.append(func(): val_btn.text = get_fn.call())
+	else:
+		var vl := Label.new()
+		vl.custom_minimum_size.x = 80
+		vl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hbox.add_child(vl)
+		_update_fns.append(func(): vl.text = get_fn.call())
+
 	var br := _mk_btn("▶")
 	br.pressed.connect(func(): inc_fn.call(); _update_display())
 	hbox.add_child(br)
 	parent.add_child(hbox)
-	_update_fns.append(func(): vl.text = get_fn.call())
 
 func _add_stage_row(parent: Control) -> void:
 	var menu := GameData.active_vs_menu()
 	_arrow_row(parent, "ステージ",
 		func(): return GameState.get_stage_name(menu["stage"]),
 		func(): menu["stage"] = wrapi(menu["stage"] - 1, 0, GameState.STAGE_COUNT),
-		func(): menu["stage"] = wrapi(menu["stage"] + 1, 0, GameState.STAGE_COUNT))
+		func(): menu["stage"] = wrapi(menu["stage"] + 1, 0, GameState.STAGE_COUNT),
+		# ▼ 追加
+		func():
+			_stage_overlay.show_overlay(func(new_val: int):
+				menu["stage"] = new_val
+				_update_display()
+			)
+	)
 
 # ── 名前入力 ────────────────────────────────────────────────
 func _on_name_btn_pressed(pi: int) -> void:
@@ -205,3 +237,87 @@ func _vs_menu_backup() -> void:
 func _update_display() -> void:
 	for fn in _update_fns:
 		fn.call()
+
+# キャラ行生成メソッド
+func _make_character_row(parent: Control, getter: Callable, setter: Callable) -> void:
+	var hbox := HBoxContainer.new()
+	_lbl_w(hbox, "キャラ：", 90)
+
+	var bl := _mk_btn("◀")
+	bl.pressed.connect(func():
+		setter.call(wrapi(getter.call() - 1, 0, Constants.get_character_count()))
+		_update_display()
+	)
+	hbox.add_child(bl)
+
+	var name_btn := _mk_btn("")
+	name_btn.custom_minimum_size.x = 70
+	name_btn.pressed.connect(func():
+		_character_overlay.show_overlay(func(new_idx: int):
+			setter.call(new_idx)
+			_update_display()
+		)
+	)
+	hbox.add_child(name_btn)
+
+	var br := _mk_btn("▶")
+	br.pressed.connect(func():
+		setter.call(wrapi(getter.call() + 1, 0, Constants.get_character_count()))
+		_update_display()
+	)
+	hbox.add_child(br)
+
+	parent.add_child(hbox)
+	_update_fns.append(func(): name_btn.text = Constants.get_character_name(getter.call()))
+
+# オーバーレイが未生成なら生成
+func _ensure_character_overlay() -> void:
+	if _character_overlay == null:
+		_character_overlay = CharacterSelectOverlay.new()
+		add_child(_character_overlay)
+
+func _make_kuru_row(parent: Control, getter: Callable, setter: Callable) -> void:
+	var hbox := HBoxContainer.new()
+	_lbl_w(hbox, "くる：", 90)
+
+	var bl := _mk_btn("◀")
+	bl.pressed.connect(func():
+		setter.call(wrapi(getter.call() - 1, 0, Constants.get_kuru_count()))
+		_update_display()
+	)
+	hbox.add_child(bl)
+
+	var name_btn := _mk_btn("")
+	name_btn.custom_minimum_size.x = 70
+	name_btn.pressed.connect(func():
+		_kuru_overlay.show_overlay(func(new_idx: int):
+			setter.call(new_idx)
+			_update_display()
+		)
+	)
+	hbox.add_child(name_btn)
+
+	var br := _mk_btn("▶")
+	br.pressed.connect(func():
+		setter.call(wrapi(getter.call() + 1, 0, Constants.get_kuru_count()))
+		_update_display()
+	)
+	hbox.add_child(br)
+
+	parent.add_child(hbox)
+	_update_fns.append(func(): name_btn.text = Constants.get_kuru_name(getter.call()))
+
+func _ensure_kuru_overlay() -> void:
+	if _kuru_overlay == null:
+		_kuru_overlay = KuruSelectOverlay.new()
+		add_child(_kuru_overlay)
+
+func _ensure_item_overlay() -> void:
+	if _item_overlay == null:
+		_item_overlay = ItemSelectOverlay.new()
+		add_child(_item_overlay)
+
+func _ensure_stage_overlay() -> void:
+	if _stage_overlay == null:
+		_stage_overlay = StageSelectOverlay.new()
+		add_child(_stage_overlay)

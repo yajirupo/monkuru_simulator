@@ -7,13 +7,12 @@ extends RefCounted
 #
 #  【役割】
 #   「永続安全地点から隣接する危険マスへくるを打ち込み、
-#    爆弾の爆風で誘爆させる」連鎖攻撃の判定処理をまとめる。
+#    爆風で誘爆させる」連鎖攻撃の判定処理をまとめる。
 #
 #  【主な公開メソッド】
 #   initialize(danger_detector)              : 初期化
 #   get_chain_dir(player_num, dir_order)     : 誘爆可能な方向を返す（なければ -1）
 #   get_safe_neighbor_dir(pnum, ex, order)   : 除外方向以外の安全隣接方向を返す
-#   is_cell_near_wall(x, y)                  : 指定マスが壁際かどうか
 #
 #  【設計メモ】
 #   ・1 マス先での誘爆を優先し、不可能な場合のみ 2 マス先をチェックする
@@ -134,16 +133,6 @@ func get_safe_neighbor_dir(player_num: int, exclude_dir: int, dir_order: Array) 
 	return -1
 
 
-## 指定マスが壁際（隣接マスに壁またはマップ端がある）かを返す
-func is_cell_near_wall(x: int, y: int) -> bool:
-	for d in [0, 1, 2, 3]:
-		var nx: int = x + Utility.dx_from_dir(d)
-		var ny: int = y + Utility.dy_from_dir(d)
-		if not Utility.is_walkable_cell(nx, ny):
-			return true
-	return false
-
-
 # ====================================================================
 # プライベート：連鎖計算
 # ====================================================================
@@ -154,17 +143,13 @@ func _frames_to_cell_entry(dir: int, x: int, y: int, mx: int, my: int, move_per_
 	var dist: int = 0
 	match dir:
 		0:  # 右
-			var boundary: int = (mx + 1) * 320
-			dist = boundary - x
+			dist = (mx + 1) * 320 - 160 - x
 		1:  # 左
-			var boundary: int = mx * 320
-			dist = x - boundary
+			dist = x - (mx * 320 - 160)
 		2:  # 下
-			var boundary: int = (my + 1) * 320
-			dist = boundary - y
+			dist = (my + 1) * 320 - 160 - y
 		3:  # 上
-			var boundary: int = my * 320
-			dist = y - boundary
+			dist = y - (my * 320 - 160)
 		_:
 			return -1
 	if dist <= 0:
@@ -178,6 +163,6 @@ func _is_chain_overlap(entry: int, exit: int, hit: int) -> bool:
 	if hit > MAX_CHAIN_HIT_FRAME:
 		return false
 	var danger_start: int = hit
-	var danger_end: int = hit + Constants.BOMB_SPREAD_TIME - 1
+	var danger_end: int = hit + Constants.BOMB_SPREAD_TIME
 	# 重なり条件: not (exit < danger_start or entry > danger_end)
 	return (exit >= danger_start) and (entry <= danger_end)
